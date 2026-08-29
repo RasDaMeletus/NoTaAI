@@ -10,6 +10,7 @@
     <uses-feature android:name="android.hardware.camera" android:required="false" />
 
     <application
+        android:name="com.vinote.ViNoteApplication"
         android:allowBackup="true"
         android:dataExtractionRules="@xml/data_extraction_rules"
         android:fullBackupContent="@xml/backup_rules"
@@ -18,8 +19,13 @@
         android:roundIcon="@mipmap/ic_launcher_round"
         android:supportsRtl="true"
         android:theme="@style/Theme.MyApplication">
+
+        <!-- Google Sign-In Web Client ID for Firebase Auth -->
+        <meta-data
+            android:name="com.google.android.gms.auth.api.signin.client.CLIENT_ID"
+            android:value="YOUR_WEB_CLIENT_ID.apps.googleusercontent.com" />
         <activity
-            android:name=".MainActivity"
+            android:name="com.vinote.MainActivity"
             android:exported="true"
             android:label="@string/app_name"
             android:theme="@style/Theme.MyApplication">
@@ -31,7 +37,7 @@
         </activity>
 
         <service
-            android:name=".services.wallet.WalletNotificationListenerService"
+            android:name="com.vinote.services.wallet.WalletNotificationListenerService"
             android:label="ViNote E-Wallet Detector"
             android:permission="android.permission.BIND_NOTIFICATION_LISTENER_SERVICE"
             android:exported="true">

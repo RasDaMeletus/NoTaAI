@@ -7,20 +7,25 @@ plugins {
   alias(libs.plugins.roborazzi)
   alias(libs.plugins.secrets)
   alias(libs.plugins.google.services)
+  alias(libs.plugins.hilt.android)
 }
 
 android {
-  namespace = "com.example"
-  compileSdk { version = release(36) { minorApiLevel = 1 } }
+  namespace = "com.vinote"
+  compileSdk = 36
 
   defaultConfig {
-    applicationId = "com.aistudio.vinote.kmzfpq"
+    applicationId = "com.vinote"
     minSdk = 24
     targetSdk = 36
     versionCode = 1
     versionName = "1.0"
 
     testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+  }
+
+  configurations.all {
+    resolutionStrategy.force(libs.androidx.work.runtime.ktx)
   }
 
   signingConfigs {
@@ -31,12 +36,6 @@ android {
       keyAlias = "upload"
       keyPassword = System.getenv("KEY_PASSWORD")
     }
-    create("debugConfig") {
-      storeFile = file("${rootDir}/debug.keystore")
-      storePassword = "android"
-      keyAlias = "androiddebugkey"
-      keyPassword = "android"
-    }
   }
 
   buildTypes {
@@ -46,7 +45,6 @@ android {
       proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
       signingConfig = signingConfigs.getByName("release")
     }
-    debug { signingConfig = signingConfigs.getByName("debugConfig") }
   }
   compileOptions {
     sourceCompatibility = JavaVersion.VERSION_11
@@ -91,6 +89,7 @@ dependencies {
   implementation(libs.androidx.compose.ui.graphics)
   implementation(libs.androidx.compose.ui.tooling.preview)
   implementation(libs.androidx.core.ktx)
+  implementation(libs.androidx.work.runtime.ktx)
   implementation(libs.androidx.datastore.preferences)
   implementation(libs.androidx.lifecycle.runtime.compose)
   implementation(libs.androidx.lifecycle.runtime.ktx)
@@ -98,19 +97,25 @@ dependencies {
   implementation(libs.androidx.navigation.compose)
   implementation(libs.androidx.room.ktx)
   implementation(libs.androidx.room.runtime)
+  implementation(libs.hilt.android)
+  implementation(libs.hilt.navigation.compose)
+  ksp(libs.hilt.compiler)
+  ksp(libs.hilt.work.compiler)
+  implementation(libs.hilt.work)
   implementation(libs.coil.compose)
   implementation(libs.converter.moshi)
   implementation(libs.firebase.ai)
   // Firestore dependency enabled for remote expense syncing:
   implementation(libs.firebase.firestore)
 
-  // Uncomment ALL FOUR of the following dependencies together to use Firebase Auth and Google
-  // Sign-In via Credential Manager:
-  // implementation(libs.firebase.auth)
-  // implementation(libs.androidx.credentials)
-  // implementation(libs.androidx.credentials.play.services)
-  // implementation(libs.googleid)
+  // Firebase Auth + Google Sign-In via Credential Manager
+  implementation(libs.firebase.auth)
+  implementation(libs.androidx.credentials)
+  implementation(libs.androidx.credentials.play.services)
+  implementation(libs.googleid)
+  implementation(libs.play.services.auth)
   implementation(libs.firebase.appcheck.recaptcha)
+  implementation(libs.security.crypto)
   implementation(libs.kotlinx.coroutines.android)
   implementation(libs.kotlinx.coroutines.core)
   implementation(libs.logging.interceptor)

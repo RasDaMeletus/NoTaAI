@@ -1,0 +1,39 @@
+{
+  "project_info": {
+    "project_number": "247699608680",
+    "project_id": "vinote-82d72",
+    "storage_bucket": "vinote-82d72.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:247699608680:android:1e50e8051f2d8b1b9957dd",
+        "android_client_info": {
+          "package_name": "com.vinote"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "247699608680-58cabuo9ra4h6nvleo1hf7eg48cak70o.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyD0DlL39rkbo0u-_NH2fMhTSfqf2Pwl3Lg"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "247699608680-58cabuo9ra4h6nvleo1hf7eg48cak70o.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
