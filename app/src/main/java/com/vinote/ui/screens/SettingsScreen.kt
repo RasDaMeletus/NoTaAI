@@ -1,4 +1,4 @@
-package com.vinote.ui.screens
+package com.example.ui.screens
 
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.animateFloat
@@ -6,6 +6,7 @@ import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -24,6 +25,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.CloudDone
 import androidx.compose.material.icons.filled.CloudSync
@@ -31,15 +33,19 @@ import androidx.compose.material.icons.filled.DarkMode
 import androidx.compose.material.icons.filled.DeleteForever
 import androidx.compose.material.icons.filled.FileDownload
 import androidx.compose.material.icons.filled.Fingerprint
+import androidx.compose.material.icons.filled.Key
 import androidx.compose.material.icons.filled.Language
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.MonetizationOn
+import androidx.compose.material.icons.filled.NetworkWifi
 import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material.icons.filled.Person
+import androidx.compose.material.icons.filled.Psychology
 import androidx.compose.material.icons.filled.Sync
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Switch
 import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
@@ -60,19 +66,20 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.vinote.data.repository.SyncStatus
-import com.vinote.ui.components.ViNoteButton
-import com.vinote.ui.components.ViNoteButtonType
-import com.vinote.ui.components.ViNoteCard
-import com.vinote.ui.theme.ViNoteError
-import com.vinote.ui.theme.ViNoteMintSuccess
-import com.vinote.ui.theme.ViNotePrimary
-import com.vinote.ui.theme.ViNoteSecondaryFixed
-import com.vinote.ui.theme.ViNoteSurface
-import com.vinote.ui.theme.ViNoteSurfaceContainerLow
-import com.vinote.ui.theme.ViNoteTextPrimary
-import com.vinote.ui.theme.ViNoteTextSecondary
-import com.vinote.viewmodel.ViNoteViewModel
+import com.example.data.repository.SyncStatus
+import com.example.ui.components.ViNoteButton
+import com.example.ui.components.ViNoteButtonType
+import com.example.ui.components.ViNoteCard
+import com.example.ui.theme.ViNoteError
+import com.example.ui.theme.ViNoteMintSuccess
+import com.example.ui.theme.ViNotePrimary
+import com.example.ui.theme.ViNoteSecondaryFixed
+import com.example.ui.theme.ViNoteSurface
+import com.example.ui.theme.ViNoteSurfaceContainerLow
+import com.example.ui.theme.ViNoteSurfaceContainerLowest
+import com.example.ui.theme.ViNoteTextPrimary
+import com.example.ui.theme.ViNoteTextSecondary
+import com.example.viewmodel.ViNoteViewModel
 
 @Composable
 fun SettingsScreen(
@@ -86,10 +93,17 @@ fun SettingsScreen(
     var notificationsEnabled by remember { mutableStateOf(true) }
     var biometricEnabled by remember { mutableStateOf(true) }
     var showClearHistoryDialog by remember { mutableStateOf(false) }
+    var showHfKeyDialog by remember { mutableStateOf(false) }
+    var hfApiKeyInput by remember { mutableStateOf("") }
 
     val syncStatus by viewModel.syncStatus.collectAsState()
-    val lastSyncTimestamp by viewModel.lastSyncTimestamp.collectAsState()
+    val syncSummary by viewModel.syncSummary.collectAsState()
+    val lastSyncTimestamp = syncSummary.lastSyncTimestamp
     val userProfile by viewModel.userProfile.collectAsState()
+    val aiEngineStatus by viewModel.aiEngineStatus.collectAsState()
+
+    var wifiOnlyCloud by remember { mutableStateOf(aiEngineStatus.isWifiOnlyPreferred) }
+    var forceOfflineMode by remember { mutableStateOf(aiEngineStatus.isForceOffline) }
 
     val infiniteTransition = rememberInfiniteTransition(label = "settings_sync_anim")
     val rotationAngle by infiniteTransition.animateFloat(
@@ -146,11 +160,99 @@ fun SettingsScreen(
                 }
             }
 
-            // CLOUD SYNC (FIRESTORE)
+            // HYBRID AI & HUGGING FACE ENGINE
             item {
                 Column(modifier = Modifier.fillMaxWidth()) {
                     Text(
-                        text = "CLOUD SYNC (FIRESTORE)",
+                        text = "HYBRID AI & OFFLINE ENGINE",
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = ViNoteTextSecondary,
+                        letterSpacing = 0.05.sp,
+                        modifier = Modifier.padding(start = 4.dp, bottom = 8.dp)
+                    )
+
+                    ViNoteCard(padding = 0.dp) {
+                        // Current Active Routing Status
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 18.dp, vertical = 14.dp),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Box(
+                                    modifier = Modifier
+                                        .size(38.dp)
+                                        .clip(CircleShape)
+                                        .background(if (aiEngineStatus.isOnline) ViNoteMintSuccess.copy(alpha = 0.2f) else ViNoteSecondaryFixed.copy(alpha = 0.5f)),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Icon(
+                                        imageVector = if (aiEngineStatus.isOnline) Icons.Default.AutoAwesome else Icons.Default.Psychology,
+                                        contentDescription = "AI Engine",
+                                        tint = if (aiEngineStatus.isOnline) ViNoteMintSuccess else ViNotePrimary,
+                                        modifier = Modifier.size(20.dp)
+                                    )
+                                }
+                                Spacer(modifier = Modifier.width(14.dp))
+                                Column {
+                                    Text(
+                                        text = "Active Inference Engine",
+                                        fontSize = 15.sp,
+                                        fontWeight = FontWeight.SemiBold,
+                                        color = ViNoteTextPrimary
+                                    )
+                                    Text(
+                                        text = if (aiEngineStatus.isOnline) "Hugging Face Online ⚡ (${aiEngineStatus.connectionType})" else "On-Device Neural Engine 🔒 (Offline)",
+                                        fontSize = 13.sp,
+                                        color = if (aiEngineStatus.isOnline) ViNoteMintSuccess else ViNoteTextSecondary
+                                    )
+                                }
+                            }
+                        }
+
+                        // Wi-Fi Only Switch
+                        SettingsToggleRow(
+                            icon = Icons.Default.NetworkWifi,
+                            title = "Wi-Fi Only for Cloud AI",
+                            subtitle = "Route to Hugging Face only on Wi-Fi (Saves data)",
+                            checked = wifiOnlyCloud,
+                            onCheckedChange = {
+                                wifiOnlyCloud = it
+                                viewModel.setWifiOnlyForCloud(it)
+                            }
+                        )
+
+                        // Force Offline Mode Switch
+                        SettingsToggleRow(
+                            icon = Icons.Default.Lock,
+                            title = "Force On-Device Offline Mode",
+                            subtitle = "Run 100% locally with zero internet requests",
+                            checked = forceOfflineMode,
+                            onCheckedChange = {
+                                forceOfflineMode = it
+                                viewModel.setForceOfflineMode(it)
+                            }
+                        )
+
+                        // Hugging Face API Token config
+                        SettingsRow(
+                            icon = Icons.Default.Key,
+                            title = "Hugging Face API Token",
+                            subtitle = if (aiEngineStatus.hasApiKey) "Custom API Token Configured 🔑" else "Tap to set Hugging Face API Token",
+                            onClick = { showHfKeyDialog = true }
+                        )
+                    }
+                }
+            }
+
+            // CLOUD SYNC (FIREBASE FIRESTORE)
+            item {
+                Column(modifier = Modifier.fillMaxWidth()) {
+                    Text(
+                        text = "CLOUD SYNC (FIREBASE FIRESTORE)",
                         fontSize = 12.sp,
                         fontWeight = FontWeight.Bold,
                         color = ViNoteTextSecondary,
@@ -160,7 +262,7 @@ fun SettingsScreen(
 
                     ViNoteCard(padding = 0.dp) {
                         val syncSubtitle = when (syncStatus) {
-                            SyncStatus.IDLE -> if (lastSyncTimestamp != null) "Last synced: Just now" else "Connected & ready"
+                            SyncStatus.IDLE -> if (lastSyncTimestamp != null) "Last synced: Just now" else "Connected to Firebase"
                             SyncStatus.SYNCING -> "Synchronizing with Firestore..."
                             SyncStatus.SUCCESS -> "All expenses backed up to Cloud"
                             SyncStatus.ERROR -> "Sync error, tap to retry"
@@ -368,6 +470,50 @@ fun SettingsScreen(
                 Spacer(modifier = Modifier.height(30.dp))
             }
         }
+    }
+
+    if (showHfKeyDialog) {
+        AlertDialog(
+            onDismissRequest = { showHfKeyDialog = false },
+            title = {
+                Text(
+                    text = "Hugging Face API Token",
+                    fontWeight = FontWeight.Bold,
+                    color = ViNoteTextPrimary
+                )
+            },
+            text = {
+                Column {
+                    Text(
+                        text = "Enter your Hugging Face User Access Token (hf_...) to unlock high-accuracy cloud models (TrOCR & IndoBERT/Flan-T5) when connected to Wi-Fi. ViNote automatically falls back to 100% on-device offline models when offline or on mobile data.",
+                        color = ViNoteTextSecondary,
+                        fontSize = 13.sp
+                    )
+                    Spacer(modifier = Modifier.height(12.dp))
+                    OutlinedTextField(
+                        value = hfApiKeyInput,
+                        onValueChange = { hfApiKeyInput = it },
+                        placeholder = { Text("hf_xxxxxxxxxxxxxxxxxxxx") },
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                }
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        viewModel.setHuggingFaceApiKey(hfApiKeyInput.trim())
+                        showHfKeyDialog = false
+                    }
+                ) {
+                    Text("Save Token", color = ViNotePrimary, fontWeight = FontWeight.Bold)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showHfKeyDialog = false }) {
+                    Text("Cancel", color = ViNoteTextSecondary)
+                }
+            }
+        )
     }
 
     if (showClearHistoryDialog) {

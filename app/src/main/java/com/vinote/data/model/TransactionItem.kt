@@ -1,4 +1,4 @@
-package com.vinote.data.model
+package com.example.data.model
 
 import androidx.room.Entity
 import androidx.room.PrimaryKey
@@ -17,16 +17,13 @@ enum class TransactionSource {
     BANK_SYNC
 }
 
-/**
- * Legacy transaction model used by existing UI components.
- * Will be migrated to TransactionEntity in a future Room migration.
- */
 @Entity(tableName = "transactions")
 data class TransactionItem(
     @PrimaryKey(autoGenerate = true)
     val id: Long = 0L,
+    val userId: String = "user_default",
     val title: String,
-    val amount: Long, // in IDR
+    val amount: Long, // in IDR (exact integer representation, no float inaccuracies)
     val category: String,
     val type: TransactionType = TransactionType.EXPENSE,
     val timestamp: Long = System.currentTimeMillis(),
@@ -34,6 +31,8 @@ data class TransactionItem(
     val merchant: String = "",
     val source: TransactionSource = TransactionSource.MANUAL,
     val walletName: String? = null,
-    val userId: String = "",
-    val syncState: String = "LOCAL_ONLY" // LOCAL_ONLY, SYNCED, PENDING_SYNC
+    val fingerprint: String? = null,
+    val confidence: Float = 1.0f,
+    val isConfirmed: Boolean = true,
+    val syncState: String = "SYNCED"
 )

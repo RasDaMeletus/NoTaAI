@@ -1,5 +1,9 @@
-package com.vinote.ui.screens
+package com.example.ui.screens
 
+import android.Manifest
+import android.content.pm.PackageManager
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.LinearEasing
@@ -8,10 +12,6 @@ import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
-import androidx.compose.animation.scaleIn
-import androidx.compose.animation.scaleOut
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -43,7 +43,6 @@ import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.GraphicEq
 import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.Payments
-import androidx.compose.material.icons.filled.Security
 import androidx.compose.material.icons.filled.Storefront
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -51,6 +50,7 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -59,39 +59,37 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.vinote.data.engine.OfflineNlpEngine
-import com.vinote.data.model.NotaEyeState
-import com.vinote.ui.components.FormatUtils
-import com.vinote.ui.components.NotaAvatar
-import com.vinote.ui.theme.ViNoteMintSuccess
-import com.vinote.ui.theme.ViNoteOnPrimary
-import com.vinote.ui.theme.ViNoteOutlineVariant
-import com.vinote.ui.theme.ViNotePrimary
-import com.vinote.ui.theme.ViNotePrimaryContainer
-import com.vinote.ui.theme.ViNotePrimaryFixed
-import com.vinote.ui.theme.ViNotePrimaryFixedDim
-import com.vinote.ui.theme.ViNoteSecondaryContainer
-import com.vinote.ui.theme.ViNoteSecondaryFixed
-import com.vinote.ui.theme.ViNoteSurface
-import com.vinote.ui.theme.ViNoteSurfaceContainer
-import com.vinote.ui.theme.ViNoteSurfaceContainerHigh
-import com.vinote.ui.theme.ViNoteSurfaceContainerLow
-import com.vinote.ui.theme.ViNoteSurfaceContainerLowest
-import com.vinote.ui.theme.ViNoteTertiaryFixed
-import com.vinote.ui.theme.ViNoteTextPrimary
-import com.vinote.ui.theme.ViNoteTextSecondary
-import com.vinote.viewmodel.ViNoteViewModel
+import androidx.core.content.ContextCompat
+import com.example.data.engine.OfflineNlpEngine
+import com.example.ui.components.FormatUtils
+import com.example.ui.theme.ViNoteMintSuccess
+import com.example.ui.theme.ViNoteOnPrimary
+import com.example.ui.theme.ViNoteOutlineVariant
+import com.example.ui.theme.ViNotePrimary
+import com.example.ui.theme.ViNotePrimaryContainer
+import com.example.ui.theme.ViNotePrimaryFixed
+import com.example.ui.theme.ViNotePrimaryFixedDim
+import com.example.ui.theme.ViNoteSecondaryContainer
+import com.example.ui.theme.ViNoteSecondaryFixed
+import com.example.ui.theme.ViNoteSurface
+import com.example.ui.theme.ViNoteSurfaceContainerHigh
+import com.example.ui.theme.ViNoteSurfaceContainerLow
+import com.example.ui.theme.ViNoteSurfaceContainerLowest
+import com.example.ui.theme.ViNoteTertiaryFixed
+import com.example.ui.theme.ViNoteTextPrimary
+import com.example.ui.theme.ViNoteTextSecondary
+import com.example.viewmodel.ViNoteViewModel
 
 @Composable
 fun VoiceInputScreen(
@@ -99,12 +97,38 @@ fun VoiceInputScreen(
     onBack: () -> Unit,
     modifier: Modifier = Modifier
 ) {
+    val context = LocalContext.current
     val voiceTranscript by viewModel.voiceTranscript.collectAsState()
     val parsedEntity by viewModel.parsedVoiceEntity.collectAsState()
     val isListening by viewModel.isVoiceListening.collectAsState()
+    val audioRmsDb by viewModel.audioRmsDb.collectAsState()
     val notaConfig by viewModel.notaConfig.collectAsState()
+    val aiEngineStatus by viewModel.aiEngineStatus.collectAsState()
 
     var isEditingTranscript by remember { mutableStateOf(false) }
+
+    var hasAudioPermission by remember {
+        mutableStateOf(
+            ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED
+        )
+    }
+
+    val permissionLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestPermission()
+    ) { isGranted ->
+        hasAudioPermission = isGranted
+        if (isGranted) {
+            viewModel.startRealSpeechRecording()
+        }
+    }
+
+    LaunchedEffect(Unit) {
+        if (hasAudioPermission) {
+            viewModel.startRealSpeechRecording()
+        } else {
+            permissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
+        }
+    }
 
     // Animations for Ambient Background and Mic Fluid Ripple Waves
     val infiniteTransition = rememberInfiniteTransition(label = "voice_screen_motion")
@@ -198,6 +222,9 @@ fun VoiceInputScreen(
         label = "wave_alpha3"
     )
 
+    // Dynamic scale bonus derived from real-time microphone RMS audio volume
+    val liveRmsBonus = if (isListening) (audioRmsDb * 0.45f) else 0f
+
     Box(
         modifier = modifier
             .fillMaxSize()
@@ -255,11 +282,10 @@ fun VoiceInputScreen(
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                // Spacer for balance
                 Box(modifier = Modifier.size(40.dp))
 
                 Text(
-                    text = "VOICE",
+                    text = "LIVE SPEECH INPUT",
                     fontSize = 12.sp,
                     fontWeight = FontWeight.Bold,
                     color = ViNoteTextSecondary,
@@ -268,7 +294,10 @@ fun VoiceInputScreen(
 
                 // Close Button
                 IconButton(
-                    onClick = onBack,
+                    onClick = {
+                        viewModel.stopRealSpeechRecording()
+                        onBack()
+                    },
                     modifier = Modifier
                         .size(40.dp)
                         .clip(CircleShape)
@@ -284,12 +313,12 @@ fun VoiceInputScreen(
                 }
             }
 
-            Spacer(modifier = Modifier.height(16.dp))
+            Spacer(modifier = Modifier.height(12.dp))
 
             // Nota Avatar - Listening / Excited State
             Column(
                 horizontalAlignment = Alignment.CenterHorizontally,
-                modifier = Modifier.padding(bottom = 20.dp)
+                modifier = Modifier.padding(bottom = 16.dp)
             ) {
                 Box(
                     modifier = Modifier
@@ -319,38 +348,52 @@ fun VoiceInputScreen(
                 Box(
                     modifier = Modifier
                         .clip(RoundedCornerShape(50))
-                        .background(ViNotePrimaryFixed.copy(alpha = 0.6f))
-                        .padding(horizontal = 12.dp, vertical = 4.dp)
+                        .background(if (isListening) ViNoteMintSuccess.copy(alpha = 0.2f) else ViNotePrimaryFixed.copy(alpha = 0.6f))
+                        .border(
+                            1.dp,
+                            if (isListening) ViNoteMintSuccess else Color.Transparent,
+                            RoundedCornerShape(50)
+                        )
+                        .padding(horizontal = 14.dp, vertical = 4.dp)
                 ) {
-                    Text(
-                        text = if (isListening) "LISTENING" else "READY",
-                        fontSize = 11.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = ViNotePrimary,
-                        letterSpacing = 1.sp
-                    )
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Box(
+                            modifier = Modifier
+                                .size(6.dp)
+                                .clip(CircleShape)
+                                .background(if (isListening) ViNoteMintSuccess else ViNotePrimary)
+                        )
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text(
+                            text = if (isListening) "MIC ACTIVE • SPEAK NOW" else "TAP MIC TO RECORD",
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = if (isListening) Color(0xFF0F6E3B) else ViNotePrimary,
+                            letterSpacing = 1.sp
+                        )
+                    }
                 }
             }
 
-            // Transcription Bubble with Decorative Tail
+            // Transcription Bubble with Real-Time Speech Display
             Box(
                 modifier = Modifier
-                    .fillMaxWidth(0.92f)
+                    .fillMaxWidth(0.95f)
                     .shadow(
                         elevation = 12.dp,
-                        shape = RoundedCornerShape(32.dp),
+                        shape = RoundedCornerShape(28.dp),
                         ambientColor = Color(0x14171827),
                         spotColor = Color(0x1A171827)
                     )
-                    .clip(RoundedCornerShape(32.dp))
+                    .clip(RoundedCornerShape(28.dp))
                     .background(ViNoteSurfaceContainerLowest)
-                    .border(1.dp, ViNoteOutlineVariant.copy(alpha = 0.35f), RoundedCornerShape(32.dp))
-                    .padding(horizontal = 24.dp, vertical = 26.dp),
+                    .border(1.dp, ViNoteOutlineVariant.copy(alpha = 0.35f), RoundedCornerShape(28.dp))
+                    .padding(horizontal = 20.dp, vertical = 22.dp),
                 contentAlignment = Alignment.Center
             ) {
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
                     val displayTranscript = voiceTranscript.ifBlank {
-                        if (isListening) "Tadi makan siang nasi padang 35 ribu" else "Tap mic to speak your transaction"
+                        if (isListening) "Bicara transaksi kamu (contoh: Makan siang 35 ribu GoPay)..." else "Tap mic to start speaking"
                     }
 
                     Row(
@@ -360,30 +403,30 @@ fun VoiceInputScreen(
                     ) {
                         Text(
                             text = "\"$displayTranscript",
-                            fontSize = 20.sp,
+                            fontSize = 18.sp,
                             fontWeight = FontWeight.Bold,
-                            color = ViNoteTextPrimary,
-                            lineHeight = 28.sp,
+                            color = if (voiceTranscript.isBlank()) ViNoteTextSecondary else ViNoteTextPrimary,
+                            lineHeight = 26.sp,
                             textAlign = TextAlign.Center
                         )
                         if (isListening) {
                             Text(
                                 text = "|",
-                                fontSize = 22.sp,
+                                fontSize = 20.sp,
                                 fontWeight = FontWeight.ExtraBold,
                                 color = ViNotePrimary.copy(alpha = cursorAlpha)
                             )
                         }
                         Text(
                             text = "\"",
-                            fontSize = 20.sp,
+                            fontSize = 18.sp,
                             fontWeight = FontWeight.Bold,
-                            color = ViNoteTextPrimary
+                            color = if (voiceTranscript.isBlank()) ViNoteTextSecondary else ViNoteTextPrimary
                         )
                     }
 
                     if (voiceTranscript.isNotBlank()) {
-                        Spacer(modifier = Modifier.height(10.dp))
+                        Spacer(modifier = Modifier.height(8.dp))
                         Text(
                             text = if (isEditingTranscript) "Done Editing" else "Edit Text ✏️",
                             fontSize = 12.sp,
@@ -414,36 +457,35 @@ fun VoiceInputScreen(
                 )
             }
 
-            Spacer(modifier = Modifier.height(36.dp))
+            Spacer(modifier = Modifier.height(28.dp))
 
-            // Central Mic Button & Fluid Waves
+            // Central Real Mic Button & Volume-Reactive Waves
             Box(
                 modifier = Modifier
-                    .size(190.dp)
+                    .size(180.dp)
                     .clickable {
-                        if (isListening) {
-                            viewModel.processVoiceInput()
+                        if (!hasAudioPermission) {
+                            permissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
                         } else {
-                            val randomUtterance = OfflineNlpEngine.sampleVoiceUtterances.random()
-                            viewModel.simulateVoiceStreaming(randomUtterance)
+                            viewModel.toggleSpeechRecording()
                         }
                     },
                 contentAlignment = Alignment.Center
             ) {
-                // Fluid Ripple Waves (active when listening)
+                // Fluid Ripple Waves Reacting to Live Microphone Input Volume
                 if (isListening) {
                     Box(
                         modifier = Modifier
                             .size(100.dp)
-                            .scale(waveScale1)
+                            .scale(waveScale1 + liveRmsBonus)
                             .clip(CircleShape)
-                            .background(ViNoteMintSuccess.copy(alpha = waveAlpha1 * 0.3f))
+                            .background(ViNoteMintSuccess.copy(alpha = waveAlpha1 * 0.35f))
                             .border(1.dp, ViNoteMintSuccess.copy(alpha = waveAlpha1 * 0.4f), CircleShape)
                     )
                     Box(
                         modifier = Modifier
                             .size(100.dp)
-                            .scale(waveScale2)
+                            .scale(waveScale2 + (liveRmsBonus * 0.7f))
                             .clip(CircleShape)
                             .background(ViNotePrimaryContainer.copy(alpha = waveAlpha2 * 0.25f))
                             .border(1.dp, ViNotePrimaryContainer.copy(alpha = waveAlpha2 * 0.3f), CircleShape)
@@ -461,7 +503,8 @@ fun VoiceInputScreen(
                 // Pulsing Mic Core
                 Box(
                     modifier = Modifier
-                        .size(92.dp)
+                        .size(88.dp)
+                        .scale(1f + (liveRmsBonus * 0.25f))
                         .shadow(
                             elevation = 14.dp,
                             shape = CircleShape,
@@ -469,19 +512,19 @@ fun VoiceInputScreen(
                             spotColor = ViNotePrimary.copy(alpha = 0.5f)
                         )
                         .clip(CircleShape)
-                        .background(ViNotePrimary),
+                        .background(if (isListening) ViNoteMintSuccess else ViNotePrimary),
                     contentAlignment = Alignment.Center
                 ) {
                     Icon(
                         imageVector = if (isListening) Icons.Default.GraphicEq else Icons.Default.Mic,
                         contentDescription = "Microphone",
-                        tint = ViNoteOnPrimary,
-                        modifier = Modifier.size(38.dp)
+                        tint = Color.White,
+                        modifier = Modifier.size(36.dp)
                     )
                 }
             }
 
-            Spacer(modifier = Modifier.height(16.dp))
+            Spacer(modifier = Modifier.height(14.dp))
 
             // Sample Utterances Quick Chips
             Column(
@@ -489,12 +532,12 @@ fun VoiceInputScreen(
                 horizontalAlignment = Alignment.Start
             ) {
                 Text(
-                    text = "TRY SPEAKING (OR TAP TO TEST)",
+                    text = "TRY SPEAKING (OR TAP SAMPLE)",
                     fontSize = 11.sp,
                     fontWeight = FontWeight.Bold,
                     color = ViNoteTextSecondary,
                     letterSpacing = 0.08.sp,
-                    modifier = Modifier.padding(start = 4.dp, bottom = 8.dp)
+                    modifier = Modifier.padding(start = 4.dp, bottom = 6.dp)
                 )
 
                 Row(
@@ -516,7 +559,7 @@ fun VoiceInputScreen(
                                 .background(ViNoteSurfaceContainerLow)
                                 .border(1.dp, ViNoteOutlineVariant.copy(alpha = 0.35f), RoundedCornerShape(50))
                                 .clickable {
-                                    viewModel.simulateVoiceStreaming(fullText)
+                                    viewModel.setVoiceTranscript(fullText)
                                 }
                                 .padding(horizontal = 14.dp, vertical = 8.dp)
                         ) {
@@ -531,7 +574,7 @@ fun VoiceInputScreen(
                 }
             }
 
-            Spacer(modifier = Modifier.height(20.dp))
+            Spacer(modifier = Modifier.height(16.dp))
 
             // Parsed Entity Output Card
             parsedEntity?.let { entity ->
@@ -540,13 +583,13 @@ fun VoiceInputScreen(
                         .fillMaxWidth()
                         .shadow(
                             elevation = 6.dp,
-                            shape = RoundedCornerShape(24.dp),
+                            shape = RoundedCornerShape(22.dp),
                             ambientColor = Color(0x14171827)
                         )
-                        .clip(RoundedCornerShape(24.dp))
+                        .clip(RoundedCornerShape(22.dp))
                         .background(ViNoteSurfaceContainerLowest)
-                        .border(1.dp, ViNoteOutlineVariant.copy(alpha = 0.3f), RoundedCornerShape(24.dp))
-                        .padding(18.dp)
+                        .border(1.dp, ViNoteOutlineVariant.copy(alpha = 0.3f), RoundedCornerShape(22.dp))
+                        .padding(16.dp)
                 ) {
                     Column {
                         Row(
@@ -567,10 +610,10 @@ fun VoiceInputScreen(
                                     contentDescription = "Success",
                                     tint = ViNoteMintSuccess,
                                     modifier = Modifier.size(15.dp)
-                                )
+                                    )
                                 Spacer(modifier = Modifier.width(4.dp))
                                 Text(
-                                    text = "On-Device NLP",
+                                    text = if (aiEngineStatus.isOnline) "⚡ Hugging Face NLP" else "🔒 On-Device NLP",
                                     fontSize = 11.sp,
                                     fontWeight = FontWeight.Bold,
                                     color = Color(0xFF0F6E3B)
@@ -578,7 +621,7 @@ fun VoiceInputScreen(
                             }
                         }
 
-                        Spacer(modifier = Modifier.height(14.dp))
+                        Spacer(modifier = Modifier.height(12.dp))
 
                         Row(
                             modifier = Modifier.fillMaxWidth(),
@@ -629,30 +672,40 @@ fun VoiceInputScreen(
                 }
             }
 
-            Spacer(modifier = Modifier.height(28.dp))
+            Spacer(modifier = Modifier.height(20.dp))
 
-            // Bottom Action: Done Button (Matching reference design)
+            // Bottom Action: Confirm and Add to Ledger Button
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(52.dp)
-                    .shadow(elevation = 2.dp, shape = RoundedCornerShape(50), ambientColor = Color(0x0A171827))
+                    .shadow(elevation = 3.dp, shape = RoundedCornerShape(50), ambientColor = ViNotePrimary.copy(alpha = 0.2f))
                     .clip(RoundedCornerShape(50))
-                    .background(ViNoteSurfaceContainerHigh)
-                    .border(1.dp, ViNoteOutlineVariant.copy(alpha = 0.35f), RoundedCornerShape(50))
+                    .background(ViNotePrimary)
                     .clickable {
+                        viewModel.stopRealSpeechRecording()
                         viewModel.processVoiceInput()
+                        viewModel.confirmPendingTransaction()
                         onBack()
                     }
                     .testTag("voice_done_btn"),
                 contentAlignment = Alignment.Center
             ) {
-                Text(
-                    text = "Done",
-                    fontSize = 17.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = ViNoteTextPrimary
-                )
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(
+                        imageVector = Icons.Default.CheckCircle,
+                        contentDescription = "Confirm",
+                        tint = ViNoteOnPrimary,
+                        modifier = Modifier.size(20.dp)
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(
+                        text = "Confirm & Save Transaction",
+                        fontSize = 16.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = ViNoteOnPrimary
+                    )
+                }
             }
 
             Spacer(modifier = Modifier.navigationBarsPadding().height(28.dp))

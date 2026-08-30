@@ -81,6 +81,7 @@ fun HomeScreen(
     val budgetAlertState by viewModel.budgetAlertState.collectAsState()
     val calculatedBalance by viewModel.currentCalculatedBalance.collectAsState()
     val safeMoney by viewModel.safeMoney.collectAsState()
+    val pendingList by viewModel.pendingReviewTransactions.collectAsState()
 
     // Ambient floating background glow
     Box(
@@ -414,6 +415,90 @@ fun HomeScreen(
                 }
             }
 
+            // Pending Transactions Requiring Review (Medium confidence detection)
+            if (pendingList.isNotEmpty()) {
+                item {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(22.dp))
+                            .background(Color(0xFFFFF3E0))
+                            .padding(16.dp)
+                    ) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                text = "⚠️ PENDING PAYMENT CONFIRMATION",
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.ExtraBold,
+                                color = Color(0xFFE65100),
+                                letterSpacing = 0.05.sp
+                            )
+                            Text(
+                                text = "${pendingList.size} new",
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = Color(0xFFE65100)
+                            )
+                        }
+
+                        Spacer(modifier = Modifier.height(10.dp))
+
+                        pendingList.forEach { pendingTx ->
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clip(RoundedCornerShape(16.dp))
+                                    .background(Color.White)
+                                    .padding(12.dp),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text(
+                                        text = pendingTx.title,
+                                        fontSize = 14.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = ViNoteTextPrimary
+                                    )
+                                    Text(
+                                        text = "Rp ${pendingTx.amount} • via ${pendingTx.walletName ?: "E-Wallet"}",
+                                        fontSize = 12.sp,
+                                        color = ViNoteTextSecondary
+                                    )
+                                }
+
+                                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                    IconButton(
+                                        onClick = { viewModel.rejectPendingDetection(pendingTx.id) },
+                                        modifier = Modifier
+                                            .size(34.dp)
+                                            .clip(CircleShape)
+                                            .background(Color(0xFFFFEBEE))
+                                    ) {
+                                        Text("✕", color = Color(0xFFC62828), fontWeight = FontWeight.Bold)
+                                    }
+
+                                    IconButton(
+                                        onClick = { viewModel.approvePendingDetection(pendingTx.id) },
+                                        modifier = Modifier
+                                            .size(34.dp)
+                                            .clip(CircleShape)
+                                            .background(ViNoteMintSuccess)
+                                    ) {
+                                        Text("✓", color = Color.White, fontWeight = FontWeight.Bold)
+                                    }
+                                }
+                            }
+                            Spacer(modifier = Modifier.height(8.dp))
+                        }
+                    }
+                }
+            }
+
             // Quick Add Section
             item {
                 Column(modifier = Modifier.fillMaxWidth()) {
@@ -475,24 +560,61 @@ fun HomeScreen(
                         letterSpacing = 0.05.sp
                     )
 
-                    Text(
-                        text = "SEE ALL",
-                        fontSize = 12.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = ViNotePrimary,
-                        modifier = Modifier.clickable { onNavigateToActivity() }
-                    )
+                    if (transactions.isNotEmpty()) {
+                        Text(
+                            text = "SEE ALL",
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = ViNotePrimary,
+                            modifier = Modifier.clickable { onNavigateToActivity() }
+                        )
+                    }
                 }
             }
 
-            // Transaction items (take first 3)
-            items(transactions.take(3), key = { it.id }) { transaction ->
-                ViNoteTransactionTile(
-                    transaction = transaction,
-                    onClick = {
-                        viewModel.selectTransactionDetail(transaction)
+            if (transactions.isEmpty()) {
+                item {
+                    ViNoteCard(
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(vertical = 12.dp),
+                            horizontalAlignment = Alignment.CenterHorizontally
+                        ) {
+                            NotaAvatar(
+                                eyeState = NotaEyeState.CURIOUS,
+                                baseColor = notaConfig.baseColor,
+                                isAnimated = false
+                            )
+                            Spacer(modifier = Modifier.height(8.dp))
+                            Text(
+                                text = "No transactions yet!",
+                                fontSize = 15.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = ViNoteTextPrimary
+                            )
+                            Text(
+                                text = "Speak, scan a receipt, or tap + to record your first real transaction",
+                                fontSize = 12.sp,
+                                color = ViNoteTextSecondary,
+                                textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                                modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp)
+                            )
+                        }
                     }
-                )
+                }
+            } else {
+                // Transaction items (take first 3)
+                items(transactions.take(3), key = { it.id }) { transaction ->
+                    ViNoteTransactionTile(
+                        transaction = transaction,
+                        onClick = {
+                            viewModel.selectTransactionDetail(transaction)
+                        }
+                    )
+                }
             }
 
             // Nota Recommends Banner

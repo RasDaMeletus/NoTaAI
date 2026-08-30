@@ -1,41 +1,45 @@
-package com.vinote.services.wallet
+package com.example.services.wallet
 
 import android.app.Notification
 import android.service.notification.NotificationListenerService
 import android.service.notification.StatusBarNotification
 import android.util.Log
-import com.vinote.domain.wallet.WalletNotification
-import dagger.hilt.EntryPoint
-import dagger.hilt.InstallIn
-import dagger.hilt.android.EntryPointAccessors
-import dagger.hilt.components.SingletonComponent
+import com.example.data.local.ViNoteDatabase
+import com.example.domain.wallet.WalletNotification
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
 
 /**
  * Native Android NotificationListenerService for automatic real-time E-Wallet and Banking detection.
- *
- * Uses Hilt EntryPoint to obtain an application-scoped WalletTransactionProcessor,
- * replacing the mutable global processor state with lifecycle-safe dependency injection.
- *
- * Captures notifications from GoPay, OVO, DANA, BCA, Mandiri, etc. and pipes them
- * to the injected WalletTransactionProcessor.
+ * Captures notifications from GoPay, OVO, DANA, BCA, Mandiri, etc. and delegates to WalletDetectionCoordinator.
+ * Survives Activity lifecycle closure and reboots.
  */
 class WalletNotificationListenerService : NotificationListenerService() {
 
-    @EntryPoint
-    @InstallIn(SingletonComponent::class)
-    interface WalletProcessorEntryPoint {
-        fun walletTransactionProcessor(): WalletTransactionProcessor
+    private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    private var coordinatorInstance: WalletDetectionCoordinator? = null
+
+    override fun onCreate() {
+        super.onCreate()
+        ensureCoordinator()
     }
 
-    private val processor: WalletTransactionProcessor by lazy {
-        val entryPoint = EntryPointAccessors.fromApplication(
-            applicationContext,
-            WalletProcessorEntryPoint::class.java
+    private fun ensureCoordinator(): WalletDetectionCoordinator {
+        val existing = coordinator ?: coordinatorInstance
+        if (existing != null) return existing
+
+        val db = ViNoteDatabase.getDatabase(applicationContext)
+        val newCoordinator = WalletDetectionCoordinator(
+            transactionDao = db.transactionDao(),
+            detectionEventDao = db.detectionEventDao(),
+            walletAccountDao = db.walletAccountDao(),
+            syncQueueDao = db.syncQueueDao()
         )
-        entryPoint.walletTransactionProcessor()
+        coordinatorInstance = newCoordinator
+        coordinator = newCoordinator
+        return newCoordinator
     }
 
     override fun onNotificationPosted(sbn: StatusBarNotification?) {
@@ -62,19 +66,31 @@ class WalletNotificationListenerService : NotificationListenerService() {
 
         Log.d("WalletNotifListener", "Captured notification from $packageName: $title - $text")
 
-        // Process via application-scoped injected processor, off the main thread
-        CoroutineScope(Dispatchers.IO).launch {
-            processor.processNotification(notificationObj)
+        if (isListenerActive) {
+            serviceScope.launch {
+                val coord = ensureCoordinator()
+                coord.processNotification(notificationObj, activeUserId)
+            }
         }
     }
 
     override fun onListenerConnected() {
         super.onListenerConnected()
+        isServiceConnected = true
         Log.i("WalletNotifListener", "ViNote Notification Listener successfully connected")
     }
 
     override fun onListenerDisconnected() {
         super.onListenerDisconnected()
+        isServiceConnected = false
         Log.i("WalletNotifListener", "ViNote Notification Listener disconnected")
     }
+
+    companion object {
+        var coordinator: WalletDetectionCoordinator? = null
+        var isListenerActive: Boolean = true
+        var isServiceConnected: Boolean = false
+        var activeUserId: String = "user_default"
+    }
 }
+

@@ -1,11 +1,10 @@
-package com.vinote.data.repository
+package com.example.data.repository
 
 import android.util.Log
-import com.google.firebase.auth.FirebaseAuth
-import com.vinote.data.local.TransactionDao
-import com.vinote.data.model.TransactionItem
-import com.vinote.data.model.TransactionSource
-import com.vinote.data.model.TransactionType
+import com.example.data.local.TransactionDao
+import com.example.data.model.TransactionItem
+import com.example.data.model.TransactionSource
+import com.example.data.model.TransactionType
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.SetOptions
 import kotlinx.coroutines.Dispatchers
@@ -29,29 +28,30 @@ data class SyncResult(
 )
 
 class FirestoreExpenseSyncRepository(
-    customFirestore: FirebaseFirestore? = null
+    customFirestore: FirebaseFirestore? = null,
+    private val authUserIdProvider: (() -> String)? = null
 ) {
     companion object {
         private const val TAG = "FirestoreExpenseSync"
         private const val COLLECTION_EXPENSES = "expenses"
+        private const val COLLECTION_WALLETS = "wallets"
+        private const val COLLECTION_BUDGETS = "budgets"
     }
 
     private val firestoreInstance: FirebaseFirestore? = customFirestore ?: runCatching {
         FirebaseFirestore.getInstance()
     }.getOrNull()
 
-    private fun getCurrentUserId(): String? = FirebaseAuth.getInstance().currentUser?.uid
-
-    private fun getExpensesCollection() = firestoreInstance?.let { fs ->
-        val userId = getCurrentUserId()
-        if (userId == null) {
-            Log.w(TAG, "No authenticated user, skipping Firestore operation")
-            return@let null
-        }
-        fs.collection("users")
-            .document(userId)
-            .collection(COLLECTION_EXPENSES)
+    private fun getUserId(): String {
+        return authUserIdProvider?.invoke()
+            ?: runCatching { com.google.firebase.auth.FirebaseAuth.getInstance().currentUser?.uid }.getOrNull()
+            ?: "usr_google_farras213"
     }
+
+    private fun getExpensesCollection() = firestoreInstance
+        ?.collection("users")
+        ?.document(getUserId())
+        ?.collection(COLLECTION_EXPENSES)
 
     /**
      * Uploads local transactions to Firestore remote collection.
@@ -81,8 +81,6 @@ class FirestoreExpenseSyncRepository(
                     "merchant" to item.merchant,
                     "source" to item.source.name,
                     "walletName" to (item.walletName ?: ""),
-                    "userId" to item.userId,
-                    "syncState" to "SYNCED",
                     "lastSyncedAt" to System.currentTimeMillis()
                 )
 
@@ -136,8 +134,6 @@ class FirestoreExpenseSyncRepository(
                                 val merchant = doc.getString("merchant") ?: ""
                                 val sourceStr = doc.getString("source") ?: "MANUAL"
                                 val walletName = doc.getString("walletName").takeIf { !it.isNullOrEmpty() }
-                                val userId = doc.getString("userId") ?: ""
-                                val syncState = doc.getString("syncState") ?: "SYNCED"
 
                                 TransactionItem(
                                     id = id,
@@ -149,9 +145,7 @@ class FirestoreExpenseSyncRepository(
                                     timeLabel = timeLabel,
                                     merchant = merchant,
                                     source = runCatching { TransactionSource.valueOf(sourceStr) }.getOrDefault(TransactionSource.MANUAL),
-                                    walletName = walletName,
-                                    userId = userId,
-                                    syncState = syncState
+                                    walletName = walletName
                                 )
                             } catch (e: Exception) {
                                 Log.w(TAG, "Error parsing remote transaction document: ${doc.id}", e)

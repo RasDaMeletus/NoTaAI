@@ -1,27 +1,27 @@
-package com.vinote.data.local
+package com.example.data.local
 
 import androidx.room.Dao
 import androidx.room.Insert
 import androidx.room.OnConflictStrategy
 import androidx.room.Query
 import androidx.room.Update
-import com.vinote.data.local.entity.Budget
+import com.example.data.local.entities.BudgetEntity
 import kotlinx.coroutines.flow.Flow
 
 @Dao
 interface BudgetDao {
-    @Query("SELECT * FROM budgets WHERE userId = :userId AND monthKey = :monthKey")
-    fun getBudgetsForMonth(userId: String, monthKey: String): Flow<List<Budget>>
+    @Query("SELECT * FROM budgets WHERE userId = :userId LIMIT 1")
+    fun getBudgetFlow(userId: String): Flow<BudgetEntity?>
 
-    @Query("SELECT * FROM budgets WHERE userId = :userId AND category = :category AND monthKey = :monthKey LIMIT 1")
-    suspend fun getBudgetForCategory(userId: String, category: String, monthKey: String): Budget?
+    @Query("SELECT * FROM budgets WHERE userId = :userId LIMIT 1")
+    suspend fun getBudget(userId: String): BudgetEntity?
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
-    suspend fun insert(budget: Budget): Long
+    suspend fun saveBudget(budget: BudgetEntity)
 
     @Update
-    suspend fun update(budget: Budget)
+    suspend fun updateBudget(budget: BudgetEntity)
 
-    @Query("DELETE FROM budgets WHERE id = :id")
-    suspend fun deleteById(id: Long)
+    @Query("DELETE FROM budgets WHERE userId = :userId")
+    suspend fun deleteUserBudget(userId: String)
 }

@@ -57,6 +57,12 @@ private val LightColorScheme = lightColorScheme(
 )
 
 @Composable
+fun ViNoteTheme(
+    darkTheme: Boolean = isSystemInDarkTheme(),
+    content: @Composable () -> Unit
+) = MyApplicationTheme(darkTheme = darkTheme, content = content)
+
+@Composable
 fun MyApplicationTheme(
     darkTheme: Boolean = isSystemInDarkTheme(),
     content: @Composable () -> Unit
