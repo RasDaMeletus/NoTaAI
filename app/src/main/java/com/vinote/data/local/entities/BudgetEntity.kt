@@ -1,4 +1,4 @@
-package com.example.data.local.entities
+package com.vinote.data.local.entities
 
 import androidx.room.Entity
 import androidx.room.PrimaryKey

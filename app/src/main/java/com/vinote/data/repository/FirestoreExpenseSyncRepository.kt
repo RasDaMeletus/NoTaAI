@@ -1,10 +1,10 @@
-package com.example.data.repository
+package com.vinote.data.repository
 
 import android.util.Log
-import com.example.data.local.TransactionDao
-import com.example.data.model.TransactionItem
-import com.example.data.model.TransactionSource
-import com.example.data.model.TransactionType
+import com.vinote.data.local.TransactionDao
+import com.vinote.data.model.TransactionItem
+import com.vinote.data.model.TransactionSource
+import com.vinote.data.model.TransactionType
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.SetOptions
 import kotlinx.coroutines.Dispatchers
@@ -45,7 +45,7 @@ class FirestoreExpenseSyncRepository(
     private fun getUserId(): String {
         return authUserIdProvider?.invoke()
             ?: runCatching { com.google.firebase.auth.FirebaseAuth.getInstance().currentUser?.uid }.getOrNull()
-            ?: "usr_google_farras213"
+            ?: "usr_local_guest"
     }
 
     private fun getExpensesCollection() = firestoreInstance

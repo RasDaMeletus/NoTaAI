@@ -1,4 +1,4 @@
-package com.example.ui.screens
+package com.vinote.ui.screens
 
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.background
@@ -50,24 +50,24 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
-import com.example.data.local.entities.DetectionEventEntity
-import com.example.data.local.entities.DetectionStatus
-import com.example.data.local.entities.WalletAccountEntity
-import com.example.data.model.NotaEyeState
-import com.example.ui.components.FormatUtils
-import com.example.ui.components.NotaAvatar
-import com.example.ui.components.ViNoteButton
-import com.example.ui.components.ViNoteButtonType
-import com.example.ui.components.ViNoteCard
-import com.example.ui.theme.ViNoteMintSuccess
-import com.example.ui.theme.ViNotePrimary
-import com.example.ui.theme.ViNoteSoftPink
-import com.example.ui.theme.ViNoteSurface
-import com.example.ui.theme.ViNoteSurfaceContainerLow
-import com.example.ui.theme.ViNoteSurfaceContainerLowest
-import com.example.ui.theme.ViNoteTextPrimary
-import com.example.ui.theme.ViNoteTextSecondary
-import com.example.viewmodel.ViNoteViewModel
+import com.vinote.data.local.entities.DetectionEventEntity
+import com.vinote.data.local.entities.DetectionStatus
+import com.vinote.data.local.entities.WalletAccountEntity
+import com.vinote.data.model.NotaEyeState
+import com.vinote.ui.components.FormatUtils
+import com.vinote.ui.components.NotaAvatar
+import com.vinote.ui.components.ViNoteButton
+import com.vinote.ui.components.ViNoteButtonType
+import com.vinote.ui.components.ViNoteCard
+import com.vinote.ui.theme.ViNoteMintSuccess
+import com.vinote.ui.theme.ViNotePrimary
+import com.vinote.ui.theme.ViNoteSoftPink
+import com.vinote.ui.theme.ViNoteSurface
+import com.vinote.ui.theme.ViNoteSurfaceContainerLow
+import com.vinote.ui.theme.ViNoteSurfaceContainerLowest
+import com.vinote.ui.theme.ViNoteTextPrimary
+import com.vinote.ui.theme.ViNoteTextSecondary
+import com.vinote.viewmodel.ViNoteViewModel
 
 @Composable
 fun EWalletsScreen(

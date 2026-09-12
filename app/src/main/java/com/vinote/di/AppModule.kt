@@ -3,12 +3,17 @@ package com.vinote.di
 import android.content.Context
 import com.google.firebase.auth.FirebaseAuth
 import com.vinote.core.ai.OpenRouterClient
+import com.vinote.data.local.BudgetDao
 import com.vinote.data.local.GoalDao
+import com.vinote.data.local.SyncQueueDao
 import com.vinote.data.local.TransactionDao
 import com.vinote.data.local.ViNoteDatabase
+import com.vinote.data.local.WalletAccountDao
 import com.vinote.data.repository.AuthRepository
 import com.vinote.data.repository.AuthRepositoryImpl
 import com.vinote.data.repository.FirestoreExpenseSyncRepository
+import com.vinote.data.repository.FirestoreWalletBudgetSyncRepository
+import com.vinote.data.supabase.SupabaseClientProvider
 import com.vinote.domain.ai.ViNoteAiService
 import com.vinote.domain.auth.GoogleSignInManager
 import com.vinote.domain.transaction.TransactionService
@@ -41,6 +46,15 @@ object DatabaseModule {
 
     @Provides
     fun provideGoalDao(db: ViNoteDatabase): GoalDao = db.goalDao()
+
+    @Provides
+    fun provideWalletAccountDao(db: ViNoteDatabase): WalletAccountDao = db.walletAccountDao()
+
+    @Provides
+    fun provideBudgetDao(db: ViNoteDatabase): BudgetDao = db.budgetDao()
+
+    @Provides
+    fun provideSyncQueueDao(db: ViNoteDatabase): SyncQueueDao = db.syncQueueDao()
 }
 
 @Module
@@ -51,6 +65,19 @@ object ServiceModule {
     @Singleton
     fun provideFirestoreExpenseSyncRepository(): FirestoreExpenseSyncRepository =
         FirestoreExpenseSyncRepository()
+
+    @Provides
+    @Singleton
+    fun provideFirestoreWalletBudgetSyncRepository(
+        walletDao: WalletAccountDao,
+        budgetDao: BudgetDao,
+        syncQueueDao: SyncQueueDao
+    ): FirestoreWalletBudgetSyncRepository =
+        FirestoreWalletBudgetSyncRepository(
+            walletDao = walletDao,
+            budgetDao = budgetDao,
+            syncQueueDao = syncQueueDao
+        )
 
     @Provides
     @Singleton
@@ -85,6 +112,17 @@ object ServiceModule {
         aiService: ViNoteAiService
     ): WalletTransactionProcessor =
         WalletTransactionProcessor(transactionService, deduplicationService, aiService)
+}
+
+@Module
+@InstallIn(SingletonComponent::class)
+object SupabaseModule {
+
+    @Provides
+    @Singleton
+    fun provideSupabaseClientProvider(
+        @ApplicationContext context: Context
+    ): SupabaseClientProvider = SupabaseClientProvider(context)
 }
 
 @Module

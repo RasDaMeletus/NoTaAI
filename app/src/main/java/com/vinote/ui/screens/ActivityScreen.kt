@@ -77,6 +77,9 @@ import com.vinote.domain.finance.SpendingTrendReport
 import com.vinote.ui.components.FormatUtils
 import com.vinote.ui.components.NotaAvatar
 import com.vinote.ui.components.ViNoteTransactionTile
+import com.vinote.ui.components.charts.CategoryDonutChart
+import com.vinote.ui.components.charts.FinancialHealthGauge
+import com.vinote.ui.components.charts.LineChart30Days
 import com.vinote.ui.theme.ViNoteError
 import com.vinote.ui.theme.ViNoteMintSuccess
 import com.vinote.ui.theme.ViNotePrimary
@@ -107,6 +110,7 @@ fun ActivityScreen(
     val notaConfig by viewModel.notaConfig.collectAsState()
     val syncStatus by viewModel.syncStatus.collectAsState()
     val spendingTrends by viewModel.spendingTrends.collectAsState()
+    val financialHealth by viewModel.financialHealthScore.collectAsState()
 
     var showClearHistoryDialog by remember { mutableStateOf(false) }
     var isTrendsExpanded by remember { mutableStateOf(true) }
@@ -203,7 +207,8 @@ fun ActivityScreen(
                     report = spendingTrends,
                     isExpanded = isTrendsExpanded,
                     onToggleExpand = { isTrendsExpanded = !isTrendsExpanded },
-                    notaConfig = notaConfig
+                    notaConfig = notaConfig,
+                    healthScore = financialHealth.score
                 )
             }
 
@@ -409,7 +414,8 @@ private fun SpendingTrendsCard(
     report: SpendingTrendReport,
     isExpanded: Boolean,
     onToggleExpand: () -> Unit,
-    notaConfig: com.vinote.data.model.NotaConfig
+    notaConfig: com.vinote.data.model.NotaConfig,
+    healthScore: Int = 80
 ) {
     var selectedPoint by remember { mutableStateOf<DailyTrendPoint?>(null) }
 
@@ -565,6 +571,19 @@ private fun SpendingTrendsCard(
 
                     Spacer(modifier = Modifier.height(18.dp))
 
+                    // 30-Day Spending Curve
+                    Text(
+                        text = "30-DAY SPENDING CURVE",
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = ViNoteTextSecondary,
+                        letterSpacing = 0.05.sp,
+                        modifier = Modifier.padding(start = 2.dp, bottom = 8.dp)
+                    )
+                    LineChart30Days(points = report.dailyTrendPoints)
+
+                    Spacer(modifier = Modifier.height(16.dp))
+
                     // Interactive 7-Day Bar Chart
                     Text(
                         text = selectedPoint?.let { "${it.dateLabel} (${it.dayLabel}): ${FormatUtils.formatRupiah(it.amount)}" }
@@ -678,7 +697,26 @@ private fun SpendingTrendsCard(
                                 }
                             }
                         }
+
+                        val catMap = report.categoryTrends.associate { it.category to it.amount }
+                        if (catMap.isNotEmpty()) {
+                            Spacer(modifier = Modifier.height(14.dp))
+                            CategoryDonutChart(breakdown = catMap)
+                        }
                     }
+
+                    Spacer(modifier = Modifier.height(18.dp))
+
+                    // Skor Kesehatan Finansial Speedometer (PRD Section 3.2)
+                    Text(
+                        text = "SKOR KESEHATAN FINANSIAL",
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = ViNoteTextSecondary,
+                        letterSpacing = 0.05.sp,
+                        modifier = Modifier.padding(start = 2.dp, bottom = 6.dp)
+                    )
+                    FinancialHealthGauge(score = healthScore)
 
                     Spacer(modifier = Modifier.height(16.dp))
 

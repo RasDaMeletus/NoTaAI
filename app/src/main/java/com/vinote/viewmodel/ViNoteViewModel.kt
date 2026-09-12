@@ -1,63 +1,84 @@
-package com.example.viewmodel
+package com.vinote.viewmodel
 
 import android.app.Application
 import android.content.Context
 import android.graphics.Bitmap
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
-import com.example.core.ai.OpenRouterMessage
-import com.example.data.auth.AuthRepository
-import com.example.data.auth.UserSession
-import com.example.data.engine.ExtractedReceiptData
-import com.example.data.engine.ExtractedVoiceEntity
-import com.example.data.engine.OfflineNlpEngine
-import com.example.data.local.ViNoteDatabase
-import com.example.data.local.entities.DetectionEventEntity
-import com.example.data.local.entities.DetectionStatus
-import com.example.data.local.entities.WalletAccountEntity
-import com.example.data.local.entities.WalletType
-import com.example.data.model.Achievement
-import com.example.data.model.BankAccountItem
-import com.example.data.model.BudgetAlertState
-import com.example.data.model.ChatMessage
-import com.example.data.model.ConnectedWallet
-import com.example.data.model.GoalItem
-import com.example.data.model.NotaAccessory
-import com.example.data.model.NotaBaseColor
-import com.example.data.model.NotaConfig
-import com.example.data.model.NotaEyeState
-import com.example.data.model.NotaPresenceMode
-import com.example.data.model.TransactionItem
-import com.example.data.model.TransactionSource
-import com.example.data.model.TransactionType
-import com.example.data.model.UserProfile
-import com.example.data.repository.FirestoreExpenseSyncRepository
-import com.example.data.repository.SyncStatus
-import com.example.data.repository.ViNoteRepository
-import com.example.data.sync.CloudSyncStatus
-import com.example.data.sync.SyncSummary
-import com.example.data.sync.ViNoteCloudSynchronizer
-import com.example.domain.ai.AiAction
-import com.example.domain.ai.AiIntent
-import com.example.domain.ai.AiModelConfig
-import com.example.domain.ai.NoTaFinanceTools
-import com.example.domain.ai.ViNoteAiService
-import com.example.domain.finance.FinancialAnalyticsService
-import com.example.domain.finance.FinancialHealthReport
-import com.example.domain.finance.SpendingTrendReport
-import com.example.domain.notification.FinancialEventType
-import com.example.domain.notification.FinancialNotificationEngine
-import com.example.domain.transaction.TransactionService
-import com.example.domain.wallet.WalletNotification
-import com.example.services.ai.AiEngineStatus
-import com.example.services.ai.HybridAiProcessor
-import com.example.services.media.AudioSpeechRecorderService
-import com.example.services.media.ReceiptImageProcessor
-import com.example.services.wallet.WalletDeduplicationService
-import com.example.services.wallet.WalletDetectionCoordinator
-import com.example.services.wallet.WalletNotificationListenerService
-import com.example.services.wallet.WalletTransactionProcessor
-import com.example.ui.components.FormatUtils
+import com.vinote.core.ai.OpenRouterMessage
+import com.vinote.data.supabase.SupabaseClientProvider
+import com.vinote.data.repository.AuthRepository
+import com.vinote.data.repository.AuthRepositoryImpl
+import com.vinote.data.local.entity.UserSession
+import com.google.firebase.auth.FirebaseAuth
+import com.vinote.domain.model.AuthResult
+import com.vinote.data.engine.ExtractedReceiptData
+import com.vinote.data.engine.ExtractedVoiceEntity
+import com.vinote.data.engine.OfflineNlpEngine
+import com.vinote.data.local.ViNoteDatabase
+import com.vinote.data.local.entities.DetectionEventEntity
+import com.vinote.data.local.entities.DetectionStatus
+import com.vinote.data.local.entities.WalletAccountEntity
+import com.vinote.data.local.entities.WalletType
+import com.vinote.data.model.Achievement
+import com.vinote.data.model.BankAccountItem
+import com.vinote.data.model.BudgetAlertState
+import com.vinote.data.model.ChatMessage
+import com.vinote.data.model.ConnectedWallet
+import com.vinote.data.model.GoalItem
+import com.vinote.data.model.NotaAccessory
+import com.vinote.data.model.NotaBaseColor
+import com.vinote.data.model.NotaConfig
+import com.vinote.data.model.NotaEyeState
+import com.vinote.data.model.NotaPresenceMode
+import com.vinote.data.model.TransactionItem
+import com.vinote.data.model.TransactionSource
+import com.vinote.data.model.TransactionType
+import com.vinote.data.model.UserProfile
+import com.vinote.data.repository.FirestoreExpenseSyncRepository
+import com.vinote.data.repository.FirestoreWalletBudgetSyncRepository
+import com.vinote.data.repository.SyncStatus
+import com.vinote.data.repository.ViNoteRepository
+import com.vinote.data.sync.CloudSyncStatus
+import com.vinote.data.sync.SyncSummary
+import com.vinote.data.sync.ViNoteCloudSynchronizer
+import com.vinote.domain.ai.AiAction
+import com.vinote.domain.ai.AiIntent
+import com.vinote.domain.ai.AiModelConfig
+import com.vinote.domain.ai.NoTaFinanceTools
+import com.vinote.domain.ai.ViNoteAiService
+import com.vinote.domain.export.TransactionExportService
+import com.vinote.domain.finance.FinancialAnalyticsService
+import com.vinote.domain.finance.FinancialHealthReport
+import com.vinote.domain.finance.FinancialHealthScore
+import com.vinote.domain.finance.SpendingTrendReport
+import com.vinote.data.local.entities.TransactionTemplateEntity
+import com.vinote.data.local.entities.RecurringTransactionEntity
+import com.vinote.data.local.entities.RecurringFrequency
+import com.vinote.data.local.entities.AchievementEntity
+import com.vinote.data.local.entities.MerchantEmbeddingEntity
+import com.vinote.data.local.entities.SpendingPredictionEntity
+import com.vinote.domain.gamification.AchievementManager
+import com.vinote.domain.finance.SpendingPredictionEngine
+import com.vinote.domain.finance.SpendingPredictionResult
+import com.vinote.domain.mascot.MascotQuote
+import com.vinote.domain.mascot.NotaQuotesRepository
+import com.vinote.domain.statement.BankStatementParser
+import com.vinote.services.recurring.RecurringTransactionScheduler
+import java.io.File
+import com.vinote.domain.notification.FinancialEventType
+import com.vinote.domain.notification.FinancialNotificationEngine
+import com.vinote.domain.transaction.TransactionService
+import com.vinote.domain.wallet.WalletNotification
+import com.vinote.services.ai.AiEngineStatus
+import com.vinote.services.ai.HybridAiProcessor
+import com.vinote.services.media.AudioSpeechRecorderService
+import com.vinote.services.media.ReceiptImageProcessor
+import com.vinote.services.wallet.WalletDeduplicationService
+import com.vinote.services.wallet.WalletDetectionCoordinator
+import com.vinote.services.wallet.WalletNotificationListenerService
+import com.vinote.services.wallet.WalletTransactionProcessor
+import com.vinote.ui.components.FormatUtils
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -65,6 +86,7 @@ import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
@@ -79,15 +101,23 @@ enum class ActivityFilter {
 
 class ViNoteViewModel(application: Application) : AndroidViewModel(application) {
     private val database = ViNoteDatabase.getDatabase(application)
-    val authRepository = AuthRepository(database.userSessionDao(), viewModelScope)
+    private val firebaseAuth = FirebaseAuth.getInstance()
+    val authRepository: AuthRepository = AuthRepositoryImpl(firebaseAuth, SupabaseClientProvider(application))
     private val firestoreSyncRepository = FirestoreExpenseSyncRepository()
+
+    val firestoreWalletBudgetSyncRepository = FirestoreWalletBudgetSyncRepository(
+        walletDao = database.walletAccountDao(),
+        budgetDao = database.budgetDao(),
+        syncQueueDao = database.syncQueueDao()
+    )
 
     val cloudSynchronizer = ViNoteCloudSynchronizer(
         transactionDao = database.transactionDao(),
         goalDao = database.goalDao(),
         syncQueueDao = database.syncQueueDao(),
         authRepository = authRepository,
-        firestoreRepository = firestoreSyncRepository,
+        firestoreExpenseRepository = firestoreSyncRepository,
+        firestoreWalletBudgetRepository = firestoreWalletBudgetSyncRepository,
         scope = viewModelScope
     )
 
@@ -100,7 +130,8 @@ class ViNoteViewModel(application: Application) : AndroidViewModel(application) 
         syncQueueDao = database.syncQueueDao(),
         budgetDao = database.budgetDao(),
         authRepository = authRepository,
-        cloudSynchronizer = cloudSynchronizer
+        cloudSynchronizer = cloudSynchronizer,
+        firestoreWalletBudgetSyncRepository = firestoreWalletBudgetSyncRepository
     )
 
     // Domain Services & Hardened Detection Coordinator
@@ -114,12 +145,22 @@ class ViNoteViewModel(application: Application) : AndroidViewModel(application) 
     val aiService = ViNoteAiService()
     val deduplicationService = WalletDeduplicationService()
 
+    val transactionDao = database.transactionDao()
+    val transactionTemplateDao = database.transactionTemplateDao()
+    val recurringTransactionDao = database.recurringTransactionDao()
+    val recurringScheduler = RecurringTransactionScheduler(
+        recurringTransactionDao = recurringTransactionDao,
+        transactionDao = database.transactionDao(),
+        notificationEngine = notificationEngine
+    )
+
     val detectionCoordinator = WalletDetectionCoordinator(
         transactionDao = database.transactionDao(),
         detectionEventDao = database.detectionEventDao(),
         walletAccountDao = database.walletAccountDao(),
         syncQueueDao = database.syncQueueDao(),
         aiService = aiService,
+        notificationEngine = notificationEngine,
         scope = viewModelScope
     )
 
@@ -130,11 +171,17 @@ class ViNoteViewModel(application: Application) : AndroidViewModel(application) 
         scope = viewModelScope
     )
 
+    val merchantEmbeddingDao = database.merchantEmbeddingDao()
+    val achievementDao = database.achievementDao()
+    val spendingPredictionDao = database.spendingPredictionDao()
+    val achievementManager = AchievementManager(achievementDao)
+
     val financeTools = NoTaFinanceTools(
         transactionDao = database.transactionDao(),
         goalDao = database.goalDao(),
         walletAccountDao = database.walletAccountDao(),
-        budgetDao = database.budgetDao()
+        budgetDao = database.budgetDao(),
+        recurringTransactionDao = recurringTransactionDao
     )
 
     // Auth / Session State (Auth.js)
@@ -143,9 +190,9 @@ class ViNoteViewModel(application: Application) : AndroidViewModel(application) 
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), true)
 
     // Hybrid AI Processor (Hugging Face Online AI + On-Device Neural Engine)
-    val hybridAiProcessor = HybridAiProcessor(application)
-    val aiEngineStatus: StateFlow<AiEngineStatus> = hybridAiProcessor.engineStatus
-        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), AiEngineStatus())
+        val hybridAiProcessor = HybridAiProcessor(application)
+        val aiEngineStatus: StateFlow<AiEngineStatus> = hybridAiProcessor.engineStatus
+            .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), AiEngineStatus())
 
     // AI Model Configuration
     private val _aiConfig = MutableStateFlow(AiModelConfig())
@@ -172,6 +219,16 @@ class ViNoteViewModel(application: Application) : AndroidViewModel(application) 
 
     // Goals Flow
     val allGoals: StateFlow<List<GoalItem>> = repository.allGoals
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+    // Transaction Templates Flow (Quick 1-tap presets)
+    val transactionTemplates: StateFlow<List<TransactionTemplateEntity>> = transactionTemplateDao
+        .getTemplatesForUser(activeUserId)
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+    // Recurring Scheduled Transactions Flow
+    val recurringTransactions: StateFlow<List<RecurringTransactionEntity>> = recurringTransactionDao
+        .getRecurringForUser(activeUserId)
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     // Search and Filter for Activity screen
@@ -204,14 +261,50 @@ class ViNoteViewModel(application: Application) : AndroidViewModel(application) 
     // User Profile State
     private val _userProfile = MutableStateFlow(
         UserProfile(
-            fullName = "Farras Syafiq",
-            email = "farrassyafiq213@gmail.com",
-            avatarInitials = "FS",
-            dailyBudgetLimit = 180000L,
-            monthlyIncome = 6500000L
+            fullName = "NoTa User",
+            email = "",
+            phone = "",
+            avatarInitials = "NU",
+            dailyBudgetLimit = 0L,
+            monthlyIncome = 0L
         )
     )
     val userProfile = _userProfile.asStateFlow()
+
+    // Financial Health Score Flow (Deterministic 0-100 Offline Engine)
+    val financialHealthScore: StateFlow<FinancialHealthScore> = combine(
+        allTransactions,
+        allGoals,
+        userProfile
+    ) { transactions, goals, profile ->
+        val startOfDay = Calendar.getInstance().apply {
+            set(Calendar.HOUR_OF_DAY, 0)
+            set(Calendar.MINUTE, 0)
+            set(Calendar.SECOND, 0)
+            set(Calendar.MILLISECOND, 0)
+        }.timeInMillis
+
+        FinancialAnalyticsService.calculateFinancialHealthScore(
+            transactions = transactions,
+            goals = goals,
+            dailyLimit = profile.dailyBudgetLimit,
+            monthlyIncome = profile.monthlyIncome,
+            startOfDayMs = startOfDay
+        )
+    }.stateIn(
+        viewModelScope,
+        SharingStarted.WhileSubscribed(5000),
+        FinancialHealthScore(
+            score = 0,
+            grade = "-",
+            savingsScore = 0,
+            budgetScore = 0,
+            goalScore = 0,
+            consistencyScore = 0,
+            balanceScore = 0,
+            advice = "Catat transaksi untuk mulai memantau skor finansialmu! 💡"
+        )
+    )
 
     // Bank Accounts & E-Wallets (Display state synced reactively with Room)
     val bankAccounts: StateFlow<List<BankAccountItem>> = combine(
@@ -223,7 +316,7 @@ class ViNoteViewModel(application: Application) : AndroidViewModel(application) 
                 id = entity.id,
                 bankName = entity.name,
                 accountNumber = entity.accountNumber.ifBlank { "•••• " + entity.id.takeLast(4) },
-                accountHolder = profile.fullName.uppercase(),
+                accountHolder = if (profile.fullName.isNotBlank() && profile.fullName != "NoTa User") profile.fullName.uppercase() else "",
                 balance = entity.calculatedBalance,
                 isConnected = entity.isConnected,
                 isAutoSync = entity.isAutoDetectEnabled,
@@ -260,13 +353,23 @@ class ViNoteViewModel(application: Application) : AndroidViewModel(application) 
         FinancialAnalyticsService.calculateNetBalance(list)
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 0L)
 
-    // Dynamic Safe Money
+    // Dynamic Mandatory Savings calculated from user goals and savings target percentage
+    val mandatorySavings: StateFlow<Long> = combine(
+            allGoals,
+            userProfile
+        ) { goals, profile ->
+            val goalsAllocation = goals.filter { it.currentAmount < it.targetAmount }.sumOf { it.targetAmount - it.currentAmount }.coerceAtLeast(0L)
+            val targetSavingsFromIncome = (profile.monthlyIncome * (profile.savingsTargetPercentage.toDouble() / 100.0)).toLong()
+            if (goalsAllocation > 0) goalsAllocation else targetSavingsFromIncome
+        }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 0L)
+
+    // Dynamic Safe Money calculated from Net Balance minus Mandatory Savings and Today's Spent
     val safeMoney: StateFlow<Long> = combine(
-        userProfile,
+        currentCalculatedBalance,
+        mandatorySavings,
         todaySpent
-    ) { profile, spent ->
-        val safe = FinancialAnalyticsService.calculateSafeMoney(profile.monthlyIncome, 0L, profile.dailyBudgetLimit)
-        (safe - spent).coerceAtLeast(0L)
+    ) { netBalance, mandatory, spent ->
+        (netBalance - mandatory - spent).coerceAtLeast(0L)
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 0L)
 
     // Spending Trends Flow calculated from real database transactions
@@ -325,12 +428,99 @@ class ViNoteViewModel(application: Application) : AndroidViewModel(application) 
     )
     val notaConfig = _notaConfig.asStateFlow()
 
-    // Achievements
-    val achievements = listOf(
-        Achievement("1", "Smart Saver", "Saved 20% of monthly budget", true, "12 Unlocked"),
-        Achievement("2", "Streak Master", "14 days tracking without missing", true, "14 Days"),
-        Achievement("3", "Receipt Hunter", "Scanned 10 receipts", true, "Level 8")
+    // Real Achievements from Room Database (PRD Section 2.7 & 8)
+    val achievements: StateFlow<List<AchievementEntity>> = achievementDao.getAllAchievements()
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+    val unlockedAchievementsCount: StateFlow<Int> = achievementDao.getUnlockedCount()
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 0)
+
+    // Spending Prediction Flow (PRD Section 1.1)
+    val spendingPrediction: StateFlow<SpendingPredictionResult> = allTransactions.map { txs ->
+        SpendingPredictionEngine.predictSpending(txs)
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), SpendingPredictionEngine.predictSpending(emptyList()))
+
+    // Privacy & Security Controls (PRD Section 4.1)
+    private val _isPrivacyModeEnabled = MutableStateFlow(false)
+    val isPrivacyModeEnabled = _isPrivacyModeEnabled.asStateFlow()
+
+    private val _isScreenCapturePrevented = MutableStateFlow(false)
+    val isScreenCapturePrevented = _isScreenCapturePrevented.asStateFlow()
+
+    private val _isBiometricLockEnabled = MutableStateFlow(false)
+    val isBiometricLockEnabled = _isBiometricLockEnabled.asStateFlow()
+
+    private val _isAppUnlocked = MutableStateFlow(true)
+    val isAppUnlocked = _isAppUnlocked.asStateFlow()
+
+    fun togglePrivacyMode() {
+        _isPrivacyModeEnabled.value = !_isPrivacyModeEnabled.value
+    }
+
+    fun setScreenCapturePrevented(prevent: Boolean) {
+        _isScreenCapturePrevented.value = prevent
+    }
+
+    fun setBiometricLockEnabled(enabled: Boolean) {
+        _isBiometricLockEnabled.value = enabled
+        if (!enabled) _isAppUnlocked.value = true
+    }
+
+    fun setAppUnlocked(unlocked: Boolean) {
+        _isAppUnlocked.value = unlocked
+    }
+
+    // Dynamic Saving Streak (Calculated from distinct active transaction days)
+    val savingStreakDays: StateFlow<Int> = allTransactions.map { transactions ->
+        if (transactions.isEmpty()) return@map 0
+        val days = transactions.map { tx ->
+            Calendar.getInstance().apply {
+                timeInMillis = tx.timestamp
+                set(Calendar.HOUR_OF_DAY, 0)
+                set(Calendar.MINUTE, 0)
+                set(Calendar.SECOND, 0)
+                set(Calendar.MILLISECOND, 0)
+            }.timeInMillis
+        }.distinct().sortedDescending()
+        if (days.isEmpty()) return@map 0
+        var streak = 1
+        val oneDayMs = 86_400_000L
+        for (i in 0 until days.size - 1) {
+            val diff = days[i] - days[i + 1]
+            if (diff in 1..oneDayMs) {
+                streak++
+            } else {
+                break
+            }
+        }
+        streak
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), 0)
+
+    // Nota Mascot Quotes & Dynamic Dialogue System (PRD Section 2.7)
+    private val _quoteIndex = MutableStateFlow(0)
+    val notaQuote: StateFlow<MascotQuote> = combine(
+        budgetAlertState,
+        financialHealthScore,
+        savingStreakDays,
+        _quoteIndex
+    ) { alert, health, streak, idx ->
+        val savingsRate = (health.savingsScore.toDouble() / 30.0) * 100.0
+        val isOver = alert.isTriggered && !alert.isDismissed
+        NotaQuotesRepository.getQuoteForState(
+            isOverBudget = isOver,
+            savingsRate = savingsRate,
+            streakDays = streak,
+            selectedIndex = idx
+        )
+    }.stateIn(
+        viewModelScope,
+        SharingStarted.WhileSubscribed(5000),
+        NotaQuotesRepository.getQuoteForState(false, 0.0, 0, 0)
     )
+
+    fun rotateNotaQuote() {
+        _quoteIndex.value = _quoteIndex.value + 1
+    }
 
     // Chat with Nota
     private val _chatMessages = MutableStateFlow(
@@ -360,12 +550,10 @@ class ViNoteViewModel(application: Application) : AndroidViewModel(application) 
     val audioRmsDb: StateFlow<Float> = speechRecorderService.audioRmsDb
 
     // Voice recognition live text & NLP extraction
-    private val _voiceTranscript = MutableStateFlow("Makan siang nasi padang 35 ribu pakai GoPay")
+    private val _voiceTranscript = MutableStateFlow("")
     val voiceTranscript = _voiceTranscript.asStateFlow()
 
-    private val _parsedVoiceEntity = MutableStateFlow<ExtractedVoiceEntity?>(
-        OfflineNlpEngine.parseSpokenTransaction("Makan siang nasi padang 35 ribu pakai GoPay")
-    )
+    private val _parsedVoiceEntity = MutableStateFlow<ExtractedVoiceEntity?>(null)
     val parsedVoiceEntity = _parsedVoiceEntity.asStateFlow()
 
     private val _isVoiceListening = MutableStateFlow(false)
@@ -393,7 +581,6 @@ class ViNoteViewModel(application: Application) : AndroidViewModel(application) 
 
     // Computed Constants
     val baseAvailableBalance: Long = 1250000L
-    val mandatorySavings: Long = 500000L
     val dailyLimit: Long get() = _userProfile.value.dailyBudgetLimit
 
     init {
@@ -423,6 +610,13 @@ class ViNoteViewModel(application: Application) : AndroidViewModel(application) 
                     FinancialEventType.GOAL_PROGRESS -> {
                         showBanner(event.message)
                     }
+                    FinancialEventType.RECURRING_EXECUTED -> {
+                        showBanner("🔁 ${event.title}: ${event.message}")
+                        evaluateBudgetStatus()
+                    }
+                    FinancialEventType.PENDING_REVIEW -> {
+                        showBanner("🔔 ${event.title}: ${event.message}")
+                    }
                     else -> {}
                 }
             }
@@ -441,13 +635,276 @@ class ViNoteViewModel(application: Application) : AndroidViewModel(application) 
                 }
             }
         }
+
+        // Check due recurring transactions and seed initial templates
+        checkAndProcessDueRecurring()
+        seedInitialTemplatesIfEmpty()
+
+        // Seed and evaluate achievements + hydrate learned merchants
+        viewModelScope.launch(Dispatchers.IO) {
+            achievementManager.seedDefaultsIfNeeded()
+            merchantEmbeddingDao.getAllLearnedMerchants().collect { list ->
+                for (item in list) {
+                    OfflineNlpEngine.registerLearnedMerchant(item.normalizedName, item.categoryId)
+                }
+            }
+        }
+        viewModelScope.launch {
+            allTransactions.collect { txs ->
+                achievementManager.evaluate(txs, allGoals.value) { unlocked ->
+                    showBanner("🏆 Pencapaian Terbuka: ${unlocked.title}!")
+                }
+            }
+        }
+    }
+
+    fun learnMerchantCategory(merchantName: String, category: String) {
+        if (merchantName.isBlank()) return
+        viewModelScope.launch(Dispatchers.IO) {
+            val normalized = merchantName.trim().lowercase()
+            OfflineNlpEngine.registerLearnedMerchant(normalized, category)
+            val updated = merchantEmbeddingDao.updateCategoryCorrection(merchantName, category, System.currentTimeMillis())
+            if (updated == 0) {
+                merchantEmbeddingDao.insertOrUpdate(
+                    MerchantEmbeddingEntity(
+                        merchantName = merchantName,
+                        normalizedName = normalized,
+                        categoryId = category,
+                        confidence = 1.0f,
+                        correctionCount = 1
+                    )
+                )
+            }
+        }
+    }
+
+    fun exportTransactionsToPdf(context: android.content.Context) {
+        viewModelScope.launch(Dispatchers.IO) {
+            val txs = allTransactions.value
+            val totalIncome = txs.filter { it.type == TransactionType.INCOME }.sumOf { it.amount }
+            val totalExpense = txs.filter { it.type == TransactionType.EXPENSE }.sumOf { it.amount }
+            val pdfFile = TransactionExportService.exportTransactionsToPdfFile(
+                context = context,
+                transactions = txs,
+                totalIncome = totalIncome,
+                totalExpense = totalExpense
+            )
+            val shareIntent = TransactionExportService.createPdfShareIntent(context, pdfFile)
+            val chooser = android.content.Intent.createChooser(shareIntent, "Bagikan Laporan PDF NoTa").apply {
+                addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
+            }
+            context.startActivity(chooser)
+        }
+    }
+
+    data class CsvImportSummary(
+        val importedCount: Int,
+        val skippedDuplicates: Int,
+        val totalParsed: Int,
+        val isSuccess: Boolean,
+        val message: String
+    )
+
+    fun importTransactionsFromCsv(
+        csvContent: String,
+        onComplete: (CsvImportSummary) -> Unit = {}
+    ) {
+        viewModelScope.launch(Dispatchers.IO) {
+            val parseResult = BankStatementParser.parseCsv(csvContent, defaultUserId = activeUserId)
+            if (parseResult.transactions.isEmpty()) {
+                val summary = CsvImportSummary(
+                    importedCount = 0,
+                    skippedDuplicates = 0,
+                    totalParsed = 0,
+                    isSuccess = false,
+                    message = "Tidak ada transaksi valid yang dapat diproses dari CSV."
+                )
+                withContext(Dispatchers.Main) {
+                    showBanner(summary.message)
+                    onComplete(summary)
+                }
+                return@launch
+            }
+
+            val existingList = transactionDao.getTransactionsForUser(activeUserId).first()
+            val uniqueItems = BankStatementParser.filterDuplicates(parseResult.transactions, existingList)
+            val duplicatesCount = parseResult.transactions.size - uniqueItems.size
+
+            if (uniqueItems.isNotEmpty()) {
+                transactionDao.insertAll(uniqueItems)
+            }
+
+            val msg = if (uniqueItems.isNotEmpty()) {
+                "Berhasil mengimpor ${uniqueItems.size} transaksi! (${duplicatesCount} duplikat dilewati)"
+            } else {
+                "Semua transaksi (${duplicatesCount}) sudah ada di riwayat (duplikat)."
+            }
+
+            val summary = CsvImportSummary(
+                importedCount = uniqueItems.size,
+                skippedDuplicates = duplicatesCount,
+                totalParsed = parseResult.transactions.size,
+                isSuccess = true,
+                message = msg
+            )
+
+            withContext(Dispatchers.Main) {
+                showBanner(msg)
+                onComplete(summary)
+            }
+        }
+    }
+
+    private fun seedInitialTemplatesIfEmpty() {
+        viewModelScope.launch(Dispatchers.IO) {
+            val initial = listOf(
+                TransactionTemplateEntity(
+                    userId = activeUserId,
+                    name = "Kopi Pagi",
+                    amount = 25000L,
+                    category = "Food",
+                    type = TransactionType.EXPENSE,
+                    walletName = "GoPay",
+                    colorHex = "#FF6B00",
+                    iconName = "Coffee",
+                    usageCount = 5
+                ),
+                TransactionTemplateEntity(
+                    userId = activeUserId,
+                    name = "Makan Siang",
+                    amount = 35000L,
+                    category = "Food",
+                    type = TransactionType.EXPENSE,
+                    walletName = "DANA",
+                    colorHex = "#118EEA",
+                    iconName = "Restaurant",
+                    usageCount = 8
+                ),
+                TransactionTemplateEntity(
+                    userId = activeUserId,
+                    name = "Bensin Motor",
+                    amount = 50000L,
+                    category = "Transport",
+                    type = TransactionType.EXPENSE,
+                    walletName = "ShopeePay",
+                    colorHex = "#EE4D2D",
+                    iconName = "DirectionsCar",
+                    usageCount = 3
+                ),
+                TransactionTemplateEntity(
+                    userId = activeUserId,
+                    name = "Parkir",
+                    amount = 5000L,
+                    category = "Transport",
+                    type = TransactionType.EXPENSE,
+                    walletName = "OVO",
+                    colorHex = "#4C3494",
+                    iconName = "LocalParking",
+                    usageCount = 12
+                )
+            )
+            for (tmpl in initial) {
+                if (transactionTemplateDao.getTemplateById(tmpl.id) == null) {
+                    transactionTemplateDao.insertTemplate(tmpl)
+                }
+            }
+        }
+    }
+
+    fun saveTransactionTemplate(
+        name: String,
+        amount: Long,
+        category: String,
+        type: TransactionType = TransactionType.EXPENSE,
+        walletName: String? = null,
+        colorHex: String = "#4F8CFF",
+        iconName: String = "EditNote"
+    ) {
+        viewModelScope.launch(Dispatchers.IO) {
+            transactionTemplateDao.insertTemplate(
+                TransactionTemplateEntity(
+                    userId = activeUserId,
+                    name = name,
+                    amount = amount,
+                    category = category,
+                    type = type,
+                    walletName = walletName,
+                    colorHex = colorHex,
+                    iconName = iconName
+                )
+            )
+            showBanner("Template '$name' berhasil disimpan! 📋")
+        }
+    }
+
+    fun applyTemplate(template: TransactionTemplateEntity) {
+        _keypadAmount.value = template.amount.toString()
+        viewModelScope.launch(Dispatchers.IO) {
+            transactionTemplateDao.incrementUsage(template.id)
+        }
+        showBanner("Template '${template.name}' diterapkan ✨")
+    }
+
+    fun deleteTemplate(id: String) {
+        viewModelScope.launch(Dispatchers.IO) {
+            transactionTemplateDao.deleteById(id)
+            showBanner("Template dihapus")
+        }
+    }
+
+    fun saveRecurringTransaction(
+        title: String,
+        amount: Long,
+        category: String,
+        type: TransactionType = TransactionType.EXPENSE,
+        walletName: String? = null,
+        frequency: RecurringFrequency = RecurringFrequency.MONTHLY,
+        dayOfPeriod: Int = 1,
+        nextDueDate: Long = System.currentTimeMillis()
+    ) {
+        viewModelScope.launch(Dispatchers.IO) {
+            recurringTransactionDao.insertRecurring(
+                RecurringTransactionEntity(
+                    userId = activeUserId,
+                    title = title,
+                    amount = amount,
+                    category = category,
+                    type = type,
+                    walletName = walletName,
+                    frequency = frequency,
+                    dayOfPeriod = dayOfPeriod,
+                    nextDueDate = nextDueDate
+                )
+            )
+            showBanner("Transaksi rutin '$title' berhasil dijadwalkan! 🔁")
+        }
+    }
+
+    fun deleteRecurringTransaction(id: String) {
+        viewModelScope.launch(Dispatchers.IO) {
+            recurringTransactionDao.deleteById(id)
+            showBanner("Jadwal transaksi rutin dihapus")
+        }
+    }
+
+    fun checkAndProcessDueRecurring() {
+        viewModelScope.launch(Dispatchers.IO) {
+            val count = recurringScheduler.processDueTransactions(activeUserId)
+            if (count > 0) {
+                showBanner("$count transaksi rutin jatuh tempo telah dieksekusi otomatis 🔁")
+            }
+        }
+    }
+
+    fun exportTransactionsCsv(context: Context): File {
+        return TransactionExportService.exportTransactionsToCsvFile(context, allTransactions.value)
     }
 
     // OpenRouter AI Config setters
     fun setOpenRouterApiKey(key: String) {
         _aiConfig.value = _aiConfig.value.copy(apiKey = key)
-        aiService.updateApiKey(key)
-        showBanner(if (key.isNotBlank()) "OpenRouter API Key saved! 🤖" else "OpenRouter key cleared")
+        // API key is now handled server-side via Firebase Functions; kept for config persistence only
+        showBanner(if (key.isNotBlank()) "OpenRouter API Key saved (server-side) 🤖" else "OpenRouter key cleared")
     }
 
     fun setOpenRouterModel(model: String) {
@@ -553,29 +1010,32 @@ class ViNoteViewModel(application: Application) : AndroidViewModel(application) 
         _keypadAmount.value = "0"
     }
 
-    fun preparePendingTransactionFromKeypad(category: String = "Food", title: String = "Expense") {
-        val amount = _keypadAmount.value.toLongOrNull() ?: 0L
-        if (amount > 0) {
-            _pendingTransaction.value = TransactionItem(
-                userId = activeUserId,
-                title = title,
-                amount = amount,
-                category = category,
-                type = TransactionType.EXPENSE,
-                merchant = title,
-                source = TransactionSource.MANUAL,
-                timeLabel = "Just now"
-            )
+    fun preparePendingTransactionFromKeypad(
+            category: String = "Food",
+            title: String = "Expense",
+            type: TransactionType = TransactionType.EXPENSE
+        ) {
+            val amount = _keypadAmount.value.toLongOrNull() ?: 0L
+            if (amount > 0) {
+                _pendingTransaction.value = TransactionItem(
+                    userId = activeUserId,
+                    title = title,
+                    amount = amount,
+                    category = category,
+                    type = type,
+                    merchant = title,
+                    source = TransactionSource.MANUAL,
+                    timeLabel = "Just now"
+                )
+            }
         }
-    }
 
     fun setPendingTransaction(transaction: TransactionItem?) {
         _pendingTransaction.value = transaction
     }
 
     fun setHuggingFaceApiKey(apiKey: String) {
-        hybridAiProcessor.setHuggingFaceApiKey(apiKey)
-        showBanner(if (apiKey.isNotBlank()) "Hugging Face API Token Saved ⚡" else "API Token Cleared")
+        showBanner("Hugging Face integration is no longer used in this build")
     }
 
     fun setWifiOnlyForCloud(enabled: Boolean) {
@@ -596,22 +1056,24 @@ class ViNoteViewModel(application: Application) : AndroidViewModel(application) 
     ) {
         viewModelScope.launch {
             val result = authRepository.signInWithGoogle(context)
-            if (result.isSuccess) {
-                val session = result.getOrNull()
-                showBanner("Signed in as ${session?.name ?: "User"} ✨")
-                onSuccess()
-            } else {
-                val err = result.exceptionOrNull()?.localizedMessage ?: "Sign-in failed"
-                showBanner("Sign-in note: Using secure local identity")
-                // Gracefully fallback to standard Google identity
-                authRepository.loginWithDirectProfile("farrassyafiq213@gmail.com", "Farras Syafiq")
-                onSuccess()
+            when (result) {
+                is AuthResult.Success -> {
+                    showBanner("Signed in ✨")
+                    onSuccess()
+                }
+                is AuthResult.Error -> {
+                    val err = result.message
+                    showBanner("Sign-in note: Using secure local identity")
+                    // Gracefully fallback to standard guest identity
+                    authRepository.loginWithDirectProfile("user@vinote.local", "NoTa User")
+                    onSuccess()
+                }
             }
         }
     }
 
     fun login(email: String, pass: String): Boolean {
-        val name = if (email.contains("@")) email.substringBefore("@").replace(".", " ").replaceFirstChar { it.uppercase() } else "Farras Syafiq"
+        val name = if (email.contains("@")) email.substringBefore("@").replace(".", " ").replaceFirstChar { it.uppercase() } else "NoTa User"
         viewModelScope.launch {
             authRepository.loginWithDirectProfile(email = email, provider = "credentials", name = name)
             showBanner("Welcome back, $name! ✨")
@@ -619,7 +1081,7 @@ class ViNoteViewModel(application: Application) : AndroidViewModel(application) 
         return true
     }
 
-    fun loginWithGoogle(email: String = "farrassyafiq213@gmail.com", name: String = "Farras Syafiq") {
+    fun loginWithGoogle(email: String = "user@vinote.local", name: String = "NoTa User") {
         viewModelScope.launch {
             authRepository.loginWithDirectProfile(email = email, provider = "google", name = name)
             showBanner("Signed in with Google as $name ✨")
@@ -635,6 +1097,7 @@ class ViNoteViewModel(application: Application) : AndroidViewModel(application) 
     }
 
     fun completeQuickSetup(
+        userName: String = "",
         monthlyIncome: Long,
         dailyBudgetLimit: Long,
         savingsPercentage: Int,
@@ -642,16 +1105,28 @@ class ViNoteViewModel(application: Application) : AndroidViewModel(application) 
         firstGoalTarget: Long,
         startingColor: NotaBaseColor
     ) {
-        _userProfile.value = _userProfile.value.copy(
+        val current = _userProfile.value
+        val resolvedName = userName.trim().ifBlank { current.fullName.ifBlank { "NoTa User" } }
+        val initials = resolvedName.split(" ").mapNotNull { it.firstOrNull()?.uppercase() }.take(2).joinToString("").ifBlank { "NU" }
+        _userProfile.value = current.copy(
+            fullName = resolvedName,
+            avatarInitials = initials,
             monthlyIncome = monthlyIncome,
             dailyBudgetLimit = dailyBudgetLimit,
             savingsTargetPercentage = savingsPercentage
         )
+        viewModelScope.launch {
+            authRepository.loginWithDirectProfile(
+                email = current.email.ifBlank { "user@vinote.local" },
+                name = resolvedName,
+                provider = "guest"
+            )
+        }
         _notaConfig.value = _notaConfig.value.copy(baseColor = startingColor, eyeState = NotaEyeState.HAPPY)
         if (firstGoalTitle.isNotBlank() && firstGoalTarget > 0) {
             createGoal(firstGoalTitle, firstGoalTarget, "In 3 months", "Savings")
         }
-        showBanner("Quick setup complete! Welcome to ViNote 🚀")
+        showBanner("Quick setup complete! Welcome to NoTa 🚀")
     }
 
     fun logout() {
@@ -686,8 +1161,15 @@ class ViNoteViewModel(application: Application) : AndroidViewModel(application) 
             currencySymbol = currencySymbol,
             financialPersona = persona,
             isBudgetAlertActive = isBudgetAlertActive,
-            avatarInitials = if (initials.isNotEmpty()) initials else "FS"
+            avatarInitials = if (initials.isNotEmpty()) initials else "NU"
         )
+        viewModelScope.launch {
+            authRepository.loginWithDirectProfile(
+                email = email.ifBlank { "user@vinote.local" },
+                name = fullName.ifBlank { "NoTa User" },
+                provider = "profile_edit"
+            )
+        }
         showBanner("Profile & Budget settings updated! 💾")
     }
 
@@ -849,6 +1331,10 @@ class ViNoteViewModel(application: Application) : AndroidViewModel(application) 
                     walletName = tx.walletName
                 )
 
+                if (tx.merchant.isNotBlank()) {
+                    learnMerchantCategory(tx.merchant, tx.category)
+                }
+
                 // Dynamically reconcile associated wallet balance
                 if (!tx.walletName.isNullOrBlank()) {
                     val matchingWallet = walletAccounts.value.find {
@@ -975,31 +1461,20 @@ class ViNoteViewModel(application: Application) : AndroidViewModel(application) 
     fun setVoiceTranscript(text: String) {
         _voiceTranscript.value = text
         viewModelScope.launch {
-            val parsed = hybridAiProcessor.parseVoiceTranscript(text)
+            val parsed = hybridAiProcessor.parseVoiceText(text)
             _parsedVoiceEntity.value = parsed
         }
     }
 
     fun startRealSpeechRecording() {
         _isVoiceListening.value = true
-        speechRecorderService.startListening(
-            onResult = { text ->
-                _voiceTranscript.value = text
-                viewModelScope.launch {
-                    val parsed = hybridAiProcessor.parseVoiceTranscript(text)
-                    _parsedVoiceEntity.value = parsed
-                }
-                _isVoiceListening.value = false
-            },
-            onPartialResult = { partial ->
-                _voiceTranscript.value = partial
-                _parsedVoiceEntity.value = OfflineNlpEngine.parseSpokenTransaction(partial)
-            },
-            onErrorCallback = { err ->
-                _isVoiceListening.value = false
-                showBanner(err)
-            }
-        )
+        // Process the stream asynchronously
+        viewModelScope.launch {
+            val parsed = hybridAiProcessor.recognizeSpeech()
+            _voiceTranscript.value = parsed.title
+            _parsedVoiceEntity.value = parsed
+            _isVoiceListening.value = false
+        }
     }
 
     fun stopRealSpeechRecording() {
@@ -1030,7 +1505,7 @@ class ViNoteViewModel(application: Application) : AndroidViewModel(application) 
             }
             _isVoiceListening.value = false
             // Final hybrid enrichment
-            val hybridParsed = hybridAiProcessor.parseVoiceTranscript(sb.toString())
+            val hybridParsed = hybridAiProcessor.parseVoiceText(sb.toString())
             _parsedVoiceEntity.value = hybridParsed
         }
     }
@@ -1038,7 +1513,7 @@ class ViNoteViewModel(application: Application) : AndroidViewModel(application) 
     fun processVoiceInput() {
         viewModelScope.launch {
             val transcript = _voiceTranscript.value
-            val parsedAi = hybridAiProcessor.parseVoiceTranscript(transcript)
+            val parsedAi = hybridAiProcessor.parseVoiceText(transcript)
 
             _pendingTransaction.value = TransactionItem(
                 userId = activeUserId,
@@ -1057,8 +1532,6 @@ class ViNoteViewModel(application: Application) : AndroidViewModel(application) 
     // Hybrid Receipt Scan & OCR Processing (Hugging Face Online Vision + On-Device Engine)
     fun selectReceiptPreset(presetName: String) {
         _selectedReceiptPreset.value = presetName
-        val lines = OfflineNlpEngine.sampleReceipts[presetName] ?: emptyList()
-        _extractedReceiptData.value = OfflineNlpEngine.parseReceiptTextLines(lines)
     }
 
     fun processCapturedReceiptBitmap(bitmap: Bitmap, onComplete: () -> Unit = {}) {
@@ -1090,25 +1563,10 @@ class ViNoteViewModel(application: Application) : AndroidViewModel(application) 
     fun startReceiptScanning(receiptName: String? = null, onComplete: () -> Unit) {
         viewModelScope.launch {
             _isScanning.value = true
-            delay(800)
-
-            val targetPreset = receiptName ?: _selectedReceiptPreset.value
-            val lines = OfflineNlpEngine.sampleReceipts[targetPreset] ?: OfflineNlpEngine.sampleReceipts.values.first()
-            val parsedData = OfflineNlpEngine.parseReceiptTextLines(lines)
-
-            _extractedReceiptData.value = parsedData
+            _extractedReceiptData.value = null
+            _pendingTransaction.value = null
+            showBanner("Camera unavailable. Please grant camera permission and try again.")
             _isScanning.value = false
-
-            _pendingTransaction.value = TransactionItem(
-                userId = activeUserId,
-                title = parsedData.merchant,
-                amount = parsedData.totalAmount,
-                category = parsedData.category,
-                type = TransactionType.EXPENSE,
-                merchant = parsedData.merchant,
-                source = TransactionSource.SCAN,
-                timeLabel = "Just now"
-            )
             onComplete()
         }
     }
@@ -1213,7 +1671,7 @@ class ViNoteViewModel(application: Application) : AndroidViewModel(application) 
         _notaConfig.value = _notaConfig.value.copy(eyeState = nextEye)
     }
 
-    private fun showBanner(message: String) {
+    fun showBanner(message: String) {
         viewModelScope.launch {
             _bannerNotification.value = message
             delay(3000)

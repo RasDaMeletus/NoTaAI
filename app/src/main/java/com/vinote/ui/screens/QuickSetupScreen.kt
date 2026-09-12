@@ -94,6 +94,9 @@ fun QuickSetupScreen(
     var step by remember { mutableIntStateOf(1) } // 1: Income & Budget, 2: Savings & Goal, 3: Nota Companion
 
     // Setup fields
+    var fullNameText by remember {
+        mutableStateOf(if (userProfile.fullName != "NoTa User") userProfile.fullName else "")
+    }
     var monthlyIncomeText by remember { mutableStateOf("5000000") }
     var dailyLimitText by remember { mutableStateOf("180000") }
     var savingsPercentage by remember { mutableFloatStateOf(20f) }
@@ -189,6 +192,35 @@ fun QuickSetupScreen(
                             )
 
                             ViNoteCard(padding = 18.dp) {
+                                Text(
+                                    text = "YOUR NAME",
+                                    fontSize = 12.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = ViNoteTextSecondary
+                                )
+                                Spacer(modifier = Modifier.height(6.dp))
+                                OutlinedTextField(
+                                    value = fullNameText,
+                                    onValueChange = { fullNameText = it },
+                                    placeholder = { Text("Enter your name (optional)", color = ViNoteTextSecondary.copy(alpha = 0.5f)) },
+                                    singleLine = true,
+                                    keyboardOptions = KeyboardOptions(
+                                        keyboardType = KeyboardType.Text,
+                                        imeAction = ImeAction.Next
+                                    ),
+                                    shape = RoundedCornerShape(14.dp),
+                                    colors = OutlinedTextFieldDefaults.colors(
+                                        focusedBorderColor = ViNotePrimary,
+                                        unfocusedBorderColor = Color(0xFFDDE3EA),
+                                        focusedContainerColor = ViNoteSurfaceContainerLowest
+                                    ),
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .testTag("quicksetup_name_input")
+                                )
+
+                                Spacer(modifier = Modifier.height(14.dp))
+
                                 Text(
                                     text = "MONTHLY INCOME",
                                     fontSize = 12.sp,
@@ -509,6 +541,7 @@ fun QuickSetupScreen(
                                 step++
                             } else {
                                 viewModel.completeQuickSetup(
+                                    userName = fullNameText,
                                     monthlyIncome = monthlyIncome,
                                     dailyBudgetLimit = dailyLimit,
                                     savingsPercentage = savingsPercentage.toInt(),

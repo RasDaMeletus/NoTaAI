@@ -15,7 +15,6 @@ data class GoalItem(
     val category: String = "Personal",
     val iconName: String = "headphones",
     val colorHex: String = "#0057C2",
-    val userId: String = "",
     val syncState: String = "LOCAL_ONLY"
 ) {
     val progressPercentage: Int

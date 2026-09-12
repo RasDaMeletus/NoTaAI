@@ -76,12 +76,17 @@ fun HomeScreen(
     modifier: Modifier = Modifier
 ) {
     val transactions by viewModel.allTransactions.collectAsState()
-    val notaConfig by viewModel.notaConfig.collectAsState()
-    val userProfile by viewModel.userProfile.collectAsState()
-    val budgetAlertState by viewModel.budgetAlertState.collectAsState()
-    val calculatedBalance by viewModel.currentCalculatedBalance.collectAsState()
-    val safeMoney by viewModel.safeMoney.collectAsState()
-    val pendingList by viewModel.pendingReviewTransactions.collectAsState()
+        val notaConfig by viewModel.notaConfig.collectAsState()
+        val userProfile by viewModel.userProfile.collectAsState()
+        val budgetAlertState by viewModel.budgetAlertState.collectAsState()
+        val calculatedBalance by viewModel.currentCalculatedBalance.collectAsState()
+        val safeMoney by viewModel.safeMoney.collectAsState()
+        val pendingList by viewModel.pendingReviewTransactions.collectAsState()
+        val financialHealth by viewModel.financialHealthScore.collectAsState()
+        val notaQuote by viewModel.notaQuote.collectAsState()
+        val isPrivacyMode by viewModel.isPrivacyModeEnabled.collectAsState()
+        val spendingPrediction by viewModel.spendingPrediction.collectAsState()
+        val mandatorySavings by viewModel.mandatorySavings.collectAsState()
 
     // Ambient floating background glow
     Box(
@@ -152,7 +157,7 @@ fun HomeScreen(
                                 contentAlignment = Alignment.Center
                             ) {
                                 Text(
-                                    text = userProfile.avatarInitials.take(1),
+                                    text = userProfile.avatarInitials.ifBlank { "U" }.take(1),
                                     fontWeight = FontWeight.Bold,
                                     fontSize = 18.sp,
                                     color = Color.White
@@ -162,8 +167,10 @@ fun HomeScreen(
 
                         Spacer(modifier = Modifier.width(12.dp))
 
+                        val displayName = userProfile.fullName.trim().ifBlank { "NoTa User" }
+                        val firstName = if (displayName.contains(" ")) displayName.substringBefore(" ") else displayName
                         Text(
-                            text = "Hi, ${userProfile.fullName.substringBefore(" ")} 👋",
+                            text = "Hi, $firstName 👋",
                             fontSize = 20.sp,
                             fontWeight = FontWeight.Bold,
                             color = ViNoteTextPrimary
@@ -219,7 +226,7 @@ fun HomeScreen(
                             text = if (isFurious)
                                 "💢 OVER BUDGET! You exceeded the daily limit! Tap to calm me 🕊️"
                             else
-                                "Your spending looks pretty calm today ✨",
+                                notaQuote.text,
                             fontSize = 14.sp,
                             fontWeight = if (isFurious) FontWeight.Bold else FontWeight.Medium,
                             color = if (isFurious) Color(0xFFBA1A1A) else ViNoteTextPrimary
@@ -238,7 +245,7 @@ fun HomeScreen(
                             if (isFurious) {
                                 viewModel.calmNotaDown()
                             } else {
-                                viewModel.updateNotaPersonality((notaConfig.personalitySlider + 25f) % 100f)
+                                viewModel.rotateNotaQuote()
                             }
                         }
                     )
@@ -264,13 +271,18 @@ fun HomeScreen(
 
                         Spacer(modifier = Modifier.height(4.dp))
 
-                        Text(
-                            text = FormatUtils.formatRupiah(calculatedBalance),
-                            fontSize = 32.sp,
-                            fontWeight = FontWeight.ExtraBold,
-                            color = ViNoteTextPrimary,
-                            letterSpacing = (-0.02).sp
-                        )
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier.clickable { viewModel.togglePrivacyMode() }
+                        ) {
+                            Text(
+                                text = FormatUtils.formatRupiah(calculatedBalance, isPrivacyMode),
+                                fontSize = 32.sp,
+                                fontWeight = FontWeight.ExtraBold,
+                                color = ViNoteTextPrimary,
+                                letterSpacing = (-0.02).sp
+                            )
+                        }
 
                         Spacer(modifier = Modifier.height(18.dp))
 
@@ -312,7 +324,7 @@ fun HomeScreen(
                                     )
                                     Spacer(modifier = Modifier.height(2.dp))
                                     Text(
-                                        text = FormatUtils.formatRupiah(safeMoney),
+                                        text = FormatUtils.formatRupiah(safeMoney, isPrivacyMode),
                                         fontSize = 17.sp,
                                         fontWeight = FontWeight.Bold,
                                         color = ViNoteTextPrimary
@@ -353,7 +365,7 @@ fun HomeScreen(
                                     )
                                     Spacer(modifier = Modifier.height(2.dp))
                                     Text(
-                                        text = FormatUtils.formatRupiah(viewModel.mandatorySavings),
+                                        text = FormatUtils.formatRupiah(mandatorySavings, isPrivacyMode),
                                         fontSize = 17.sp,
                                         fontWeight = FontWeight.Bold,
                                         color = ViNoteTextPrimary
@@ -377,6 +389,11 @@ fun HomeScreen(
                         modifier = Modifier.padding(start = 4.dp, bottom = 8.dp)
                     )
 
+                    val todaySpent by viewModel.todaySpent.collectAsState()
+                    val dailyLimit = userProfile.dailyBudgetLimit.coerceAtLeast(1L)
+                    val progress = (todaySpent.toFloat() / dailyLimit.toFloat()).coerceIn(0f, 1f)
+                    val percentage = (progress * 100).toInt()
+
                     ViNoteCard(padding = 18.dp) {
                         Row(
                             modifier = Modifier.fillMaxWidth(),
@@ -385,20 +402,20 @@ fun HomeScreen(
                         ) {
                             Column {
                                 Text(
-                                    text = "Rp 75.000 spent",
+                                    text = "${FormatUtils.formatRupiah(todaySpent, isPrivacyMode)} spent",
                                     fontSize = 17.sp,
                                     fontWeight = FontWeight.Bold,
                                     color = ViNoteTextPrimary
                                 )
                                 Text(
-                                    text = "42% of daily target",
+                                    text = "$percentage% of daily target",
                                     fontSize = 13.sp,
                                     color = ViNoteTextSecondary
                                 )
                             }
 
                             Text(
-                                text = "Rp 180.000 limit",
+                                text = "${FormatUtils.formatRupiah(dailyLimit, isPrivacyMode)} limit",
                                 fontSize = 12.sp,
                                 fontWeight = FontWeight.Bold,
                                 color = ViNotePrimary
@@ -408,8 +425,137 @@ fun HomeScreen(
                         Spacer(modifier = Modifier.height(12.dp))
 
                         ViNoteProgressBar(
-                            progress = 0.42f,
-                            fillColor = ViNotePrimary
+                            progress = progress,
+                            fillColor = if (progress >= 1.0f) Color(0xFFBA1A1A) else ViNotePrimary
+                        )
+                    }
+                }
+            }
+
+            // Financial Health Score Card (0-100 Offline Engine)
+            item {
+                ViNoteCard(padding = 16.dp) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Text(
+                                    text = "SKOR KESEHATAN KEUANGAN",
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = ViNoteTextSecondary,
+                                    letterSpacing = 0.05.sp
+                                )
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Box(
+                                    modifier = Modifier
+                                        .clip(RoundedCornerShape(6.dp))
+                                        .background(if (financialHealth.score >= 70) ViNoteMintSuccess.copy(alpha = 0.2f) else Color(0x33E65100))
+                                        .padding(horizontal = 6.dp, vertical = 2.dp)
+                                ) {
+                                    Text(
+                                        text = "Grade ${financialHealth.grade}",
+                                        fontSize = 11.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = if (financialHealth.score >= 70) ViNoteMintSuccess else Color(0xFFE65100)
+                                    )
+                                }
+                            }
+                            Spacer(modifier = Modifier.height(4.dp))
+                            Text(
+                                text = financialHealth.advice,
+                                fontSize = 12.sp,
+                                color = ViNoteTextPrimary,
+                                lineHeight = 16.sp
+                            )
+                        }
+
+                        Spacer(modifier = Modifier.width(12.dp))
+
+                        // Score Circle Badge
+                        Box(
+                            modifier = Modifier
+                                .size(50.dp)
+                                .clip(CircleShape)
+                                .background(ViNotePrimary.copy(alpha = 0.12f)),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                Text(
+                                    text = "${financialHealth.score}",
+                                    fontSize = 17.sp,
+                                    fontWeight = FontWeight.ExtraBold,
+                                    color = ViNotePrimary
+                                )
+                                Text(
+                                    text = "/100",
+                                    fontSize = 9.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = ViNoteTextSecondary
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+
+            // Spending Forecast Card (PRD Section 1.1)
+            item {
+                ViNoteCard(padding = 16.dp) {
+                    Column(modifier = Modifier.fillMaxWidth()) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                text = "PRAKIRAAN PENGELUARAN",
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = ViNoteTextSecondary,
+                                letterSpacing = 0.05.sp
+                            )
+                            Box(
+                                modifier = Modifier
+                                    .clip(RoundedCornerShape(6.dp))
+                                    .background(Color(0xFFE8F0FE))
+                                    .padding(horizontal = 6.dp, vertical = 2.dp)
+                            ) {
+                                Text(
+                                    text = "Puncak: ${spendingPrediction.topRiskDay}",
+                                    fontSize = 10.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = Color(0xFF1967D2)
+                                )
+                            }
+                        }
+                        Spacer(modifier = Modifier.height(6.dp))
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                text = FormatUtils.formatRupiah(spendingPrediction.weeklyProjectedExpense, isPrivacyMode),
+                                fontSize = 18.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = ViNoteTextPrimary
+                            )
+                            Text(
+                                text = "Kategori: ${spendingPrediction.topCategory}",
+                                fontSize = 12.sp,
+                                color = ViNoteTextSecondary
+                            )
+                        }
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Text(
+                            text = spendingPrediction.insightText,
+                            fontSize = 12.sp,
+                            color = ViNoteTextPrimary,
+                            lineHeight = 16.sp
                         )
                     }
                 }

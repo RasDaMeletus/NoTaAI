@@ -1,26 +1,26 @@
-package com.example.data.repository
+package com.vinote.data.repository
 
-import com.example.data.auth.AuthRepository
-import com.example.data.local.BudgetDao
-import com.example.data.local.DetectionEventDao
-import com.example.data.local.GoalDao
-import com.example.data.local.SyncQueueDao
-import com.example.data.local.TransactionDao
-import com.example.data.local.UserSessionDao
-import com.example.data.local.WalletAccountDao
-import com.example.data.local.entities.BudgetEntity
-import com.example.data.local.entities.DetectionEventEntity
-import com.example.data.local.entities.DetectionStatus
-import com.example.data.local.entities.SyncOperation
-import com.example.data.local.entities.SyncQueueEntity
-import com.example.data.local.entities.WalletAccountEntity
-import com.example.data.local.entities.WalletType
-import com.example.data.model.GoalItem
-import com.example.data.model.TransactionItem
-import com.example.data.model.TransactionSource
-import com.example.data.model.TransactionType
-import com.example.data.sync.SyncSummary
-import com.example.data.sync.ViNoteCloudSynchronizer
+import com.vinote.data.repository.AuthRepository
+import com.vinote.data.local.BudgetDao
+import com.vinote.data.local.DetectionEventDao
+import com.vinote.data.local.GoalDao
+import com.vinote.data.local.SyncQueueDao
+import com.vinote.data.local.TransactionDao
+import com.vinote.data.local.UserSessionDao
+import com.vinote.data.local.WalletAccountDao
+import com.vinote.data.local.entities.BudgetEntity
+import com.vinote.data.local.entities.DetectionEventEntity
+import com.vinote.data.local.entities.DetectionStatus
+import com.vinote.data.local.entities.SyncOperation
+import com.vinote.data.local.entities.SyncQueueEntity
+import com.vinote.data.local.entities.WalletAccountEntity
+import com.vinote.data.local.entities.WalletType
+import com.vinote.data.model.GoalItem
+import com.vinote.data.model.TransactionItem
+import com.vinote.data.model.TransactionSource
+import com.vinote.data.model.TransactionType
+import com.vinote.data.sync.SyncSummary
+import com.vinote.data.sync.ViNoteCloudSynchronizer
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
@@ -40,7 +40,8 @@ class ViNoteRepository(
     val syncQueueDao: SyncQueueDao,
     val budgetDao: BudgetDao,
     val authRepository: AuthRepository,
-    val cloudSynchronizer: ViNoteCloudSynchronizer
+    val cloudSynchronizer: ViNoteCloudSynchronizer,
+    val firestoreWalletBudgetSyncRepository: FirestoreWalletBudgetSyncRepository
 ) {
     val allTransactions: Flow<List<TransactionItem>> = transactionDao.getAllTransactions()
     val allGoals: Flow<List<GoalItem>> = goalDao.getAllGoals()
@@ -149,6 +150,11 @@ class ViNoteRepository(
         val insertedId = transactionDao.insertTransaction(transaction)
         val itemToSync = if (transaction.id == 0L) transaction.copy(id = insertedId) else transaction
 
+        // Update wallet balance if walletName is provided
+        transaction.walletName?.let { walletName ->
+            updateWalletBalanceForTransaction(walletName, transaction.userId, transaction.amount, transaction.type)
+        }
+
         // Queue for synchronization
         syncQueueDao.enqueue(
             SyncQueueEntity(
@@ -162,11 +168,33 @@ class ViNoteRepository(
         return insertedId
     }
 
+    private suspend fun updateWalletBalanceForTransaction(
+        walletName: String,
+        userId: String,
+        amount: Long,
+        type: com.vinote.data.model.TransactionType
+    ) {
+        val wallet = walletAccountDao.getWalletByName(walletName, userId)
+        if (wallet != null) {
+            val balanceChange = if (type == com.vinote.data.model.TransactionType.INCOME) amount else -amount
+            val newBalance = wallet.calculatedBalance + balanceChange
+            val timestamp = System.currentTimeMillis()
+            val updatedWallet = wallet.copy(calculatedBalance = newBalance, lastSyncTimestamp = timestamp)
+            walletAccountDao.insertWallet(updatedWallet)
+
+            // Enqueue wallet sync
+            firestoreWalletBudgetSyncRepository.enqueueWalletChange(updatedWallet, SyncOperation.UPDATE)
+        }
+    }
+
     suspend fun confirmPendingTransaction(id: Long) {
         transactionDao.confirmTransaction(id)
     }
 
     suspend fun updateTransaction(transaction: TransactionItem) {
+        // Get the old transaction to calculate balance difference
+        val oldTransaction = transactionDao.getTransactionById(transaction.id)
+        
         transactionDao.updateTransaction(transaction)
         syncQueueDao.enqueue(
             SyncQueueEntity(
@@ -177,9 +205,52 @@ class ViNoteRepository(
                 payloadJson = """{"id":${transaction.id},"title":"${transaction.title}","amount":${transaction.amount}}"""
             )
         )
+
+        // Update wallet balance if wallet changed or amount/type changed
+        if (oldTransaction != null) {
+            val oldWalletName = oldTransaction.walletName
+            val newWalletName = transaction.walletName
+            
+            // If wallet changed, revert old wallet and apply to new wallet
+            if (oldWalletName != newWalletName) {
+                oldWalletName?.let { name ->
+                    val balanceChange = if (oldTransaction.type == TransactionType.INCOME) -oldTransaction.amount else oldTransaction.amount
+                    updateWalletBalanceForTransaction(name, transaction.userId, oldTransaction.amount, 
+                        if (oldTransaction.type == TransactionType.INCOME) TransactionType.EXPENSE else TransactionType.INCOME)
+                }
+                newWalletName?.let { name ->
+                    updateWalletBalanceForTransaction(name, transaction.userId, transaction.amount, transaction.type)
+                }
+            } else if (oldTransaction.amount != transaction.amount || oldTransaction.type != transaction.type) {
+                // Same wallet, but amount or type changed - calculate difference
+                newWalletName?.let { name ->
+                    val oldEffect = if (oldTransaction.type == TransactionType.INCOME) oldTransaction.amount else -oldTransaction.amount
+                    val newEffect = if (transaction.type == TransactionType.INCOME) transaction.amount else -transaction.amount
+                    val diff = newEffect - oldEffect
+                    if (diff != 0L) {
+                        val wallet = walletAccountDao.getWalletByName(name, transaction.userId)
+                        if (wallet != null) {
+                            val newBalance = wallet.calculatedBalance + diff
+                            val timestamp = System.currentTimeMillis()
+                            val updatedWallet = wallet.copy(calculatedBalance = newBalance, lastSyncTimestamp = timestamp)
+                            walletAccountDao.insertWallet(updatedWallet)
+                            firestoreWalletBudgetSyncRepository.enqueueWalletChange(updatedWallet, SyncOperation.UPDATE)
+                        }
+                    }
+                }
+            }
+        } else {
+            // No old transaction found, just apply new one
+            transaction.walletName?.let { walletName ->
+                updateWalletBalanceForTransaction(walletName, transaction.userId, transaction.amount, transaction.type)
+            }
+        }
     }
 
     suspend fun deleteTransaction(id: Long, userId: String = "user_default") {
+        // Get transaction before deleting to update wallet balance
+        val transaction = transactionDao.getTransactionById(id)
+        
         transactionDao.deleteById(id)
         syncQueueDao.enqueue(
             SyncQueueEntity(
@@ -190,6 +261,21 @@ class ViNoteRepository(
                 payloadJson = """{"id":$id}"""
             )
         )
+
+        // Revert wallet balance
+        transaction?.let { tx ->
+            tx.walletName?.let { walletName ->
+                val balanceChange = if (tx.type == TransactionType.INCOME) -tx.amount else tx.amount
+                val wallet = walletAccountDao.getWalletByName(walletName, userId)
+                if (wallet != null) {
+                    val newBalance = wallet.calculatedBalance + balanceChange
+                    val timestamp = System.currentTimeMillis()
+                    val updatedWallet = wallet.copy(calculatedBalance = newBalance, lastSyncTimestamp = timestamp)
+                    walletAccountDao.insertWallet(updatedWallet)
+                    firestoreWalletBudgetSyncRepository.enqueueWalletChange(updatedWallet, SyncOperation.UPDATE)
+                }
+            }
+        }
     }
 
     suspend fun clearAllTransactions(userId: String) {
@@ -210,14 +296,26 @@ class ViNoteRepository(
 
     suspend fun insertWallet(wallet: WalletAccountEntity) {
         walletAccountDao.insertWallet(wallet)
+        firestoreWalletBudgetSyncRepository.enqueueWalletChange(wallet, SyncOperation.INSERT)
     }
 
     suspend fun updateWallet(wallet: WalletAccountEntity) {
         walletAccountDao.updateWallet(wallet)
+        firestoreWalletBudgetSyncRepository.enqueueWalletChange(wallet, SyncOperation.UPDATE)
     }
 
     suspend fun deleteWallet(walletId: String, userId: String) {
         walletAccountDao.deleteWallet(walletId, userId)
+        // Enqueue delete sync
+        syncQueueDao.enqueue(
+            SyncQueueEntity(
+                userId = userId,
+                entityType = "WALLET",
+                entityId = walletId,
+                operation = SyncOperation.DELETE,
+                payloadJson = """{"id":"$walletId"}"""
+            )
+        )
     }
 
     fun getBudgetFlow(userId: String): Flow<BudgetEntity?> {
@@ -226,6 +324,7 @@ class ViNoteRepository(
 
     suspend fun saveBudget(budget: BudgetEntity) {
         budgetDao.saveBudget(budget)
+        firestoreWalletBudgetSyncRepository.enqueueBudgetChange(budget, SyncOperation.UPDATE)
     }
 
     suspend fun clearAllData(userId: String) {

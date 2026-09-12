@@ -1,8 +1,8 @@
-package com.example.data.local.entities
+package com.vinote.data.local.entities
 
 import androidx.room.Entity
 import androidx.room.PrimaryKey
-import com.example.data.auth.UserSession
+import com.vinote.data.local.entity.UserSession
 
 @Entity(tableName = "user_sessions")
 data class UserSessionEntity(

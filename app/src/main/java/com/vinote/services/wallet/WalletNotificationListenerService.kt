@@ -1,11 +1,11 @@
-package com.example.services.wallet
+package com.vinote.services.wallet
 
 import android.app.Notification
 import android.service.notification.NotificationListenerService
 import android.service.notification.StatusBarNotification
 import android.util.Log
-import com.example.data.local.ViNoteDatabase
-import com.example.domain.wallet.WalletNotification
+import com.vinote.data.local.ViNoteDatabase
+import com.vinote.domain.wallet.WalletNotification
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob

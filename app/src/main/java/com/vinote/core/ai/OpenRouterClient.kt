@@ -54,8 +54,6 @@ class OpenRouterClient(
                         Log.w("OpenRouterClient", "Firebase AI gateway failed", error)
                         if (continuation.isActive) continuation.resume(null)
                     }
-
-                continuation.invokeOnCancellation { task.cancel() }
             }
 
             @Suppress("UNCHECKED_CAST")

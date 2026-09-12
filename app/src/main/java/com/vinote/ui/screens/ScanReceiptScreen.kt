@@ -1,4 +1,4 @@
-package com.example.ui.screens
+package com.vinote.ui.screens
 
 import android.Manifest
 import android.content.pm.PackageManager
@@ -71,19 +71,19 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
-import com.example.data.engine.OfflineNlpEngine
-import com.example.data.model.NotaEyeState
-import com.example.ui.components.FormatUtils
-import com.example.ui.components.NotaAvatar
-import com.example.ui.components.ViNoteButton
-import com.example.ui.components.camera.CameraPreviewView
-import com.example.ui.components.camera.toBitmap
-import com.example.ui.theme.ViNoteMintSuccess
-import com.example.ui.theme.ViNotePrimary
-import com.example.ui.theme.ViNoteSurfaceContainerLowest
-import com.example.ui.theme.ViNoteTextPrimary
-import com.example.ui.theme.ViNoteTextSecondary
-import com.example.viewmodel.ViNoteViewModel
+import com.vinote.data.engine.OfflineNlpEngine
+import com.vinote.data.model.NotaEyeState
+import com.vinote.ui.components.FormatUtils
+import com.vinote.ui.components.NotaAvatar
+import com.vinote.ui.components.ViNoteButton
+import com.vinote.ui.components.camera.CameraPreviewView
+import com.vinote.ui.components.camera.toBitmap
+import com.vinote.ui.theme.ViNoteMintSuccess
+import com.vinote.ui.theme.ViNotePrimary
+import com.vinote.ui.theme.ViNoteSurfaceContainerLowest
+import com.vinote.ui.theme.ViNoteTextPrimary
+import com.vinote.ui.theme.ViNoteTextSecondary
+import com.vinote.viewmodel.ViNoteViewModel
 import java.util.concurrent.Executors
 
 @Composable
@@ -239,33 +239,6 @@ fun ScanReceiptScreen(
             }
 
             Spacer(modifier = Modifier.height(8.dp))
-
-            // Quick Preset Receipts Horizontal Chips
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 16.dp)
-                    .horizontalScroll(rememberScrollState()),
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                OfflineNlpEngine.sampleReceipts.keys.forEach { preset ->
-                    val isSelected = preset == selectedPreset
-                    Box(
-                        modifier = Modifier
-                            .clip(RoundedCornerShape(14.dp))
-                            .background(if (isSelected) ViNotePrimary else Color.White.copy(alpha = 0.15f))
-                            .clickable { viewModel.selectReceiptPreset(preset) }
-                            .padding(horizontal = 12.dp, vertical = 6.dp)
-                    ) {
-                        Text(
-                            text = preset,
-                            fontSize = 12.sp,
-                            fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
-                            color = Color.White
-                        )
-                    }
-                }
-            }
 
             Spacer(modifier = Modifier.height(10.dp))
 

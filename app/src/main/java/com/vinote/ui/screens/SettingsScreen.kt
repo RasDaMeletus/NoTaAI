@@ -1,4 +1,4 @@
-package com.example.ui.screens
+package com.vinote.ui.screens
 
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.animateFloat
@@ -66,20 +66,20 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.example.data.repository.SyncStatus
-import com.example.ui.components.ViNoteButton
-import com.example.ui.components.ViNoteButtonType
-import com.example.ui.components.ViNoteCard
-import com.example.ui.theme.ViNoteError
-import com.example.ui.theme.ViNoteMintSuccess
-import com.example.ui.theme.ViNotePrimary
-import com.example.ui.theme.ViNoteSecondaryFixed
-import com.example.ui.theme.ViNoteSurface
-import com.example.ui.theme.ViNoteSurfaceContainerLow
-import com.example.ui.theme.ViNoteSurfaceContainerLowest
-import com.example.ui.theme.ViNoteTextPrimary
-import com.example.ui.theme.ViNoteTextSecondary
-import com.example.viewmodel.ViNoteViewModel
+import com.vinote.data.repository.SyncStatus
+import com.vinote.ui.components.ViNoteButton
+import com.vinote.ui.components.ViNoteButtonType
+import com.vinote.ui.components.ViNoteCard
+import com.vinote.ui.theme.ViNoteError
+import com.vinote.ui.theme.ViNoteMintSuccess
+import com.vinote.ui.theme.ViNotePrimary
+import com.vinote.ui.theme.ViNoteSecondaryFixed
+import com.vinote.ui.theme.ViNoteSurface
+import com.vinote.ui.theme.ViNoteSurfaceContainerLow
+import com.vinote.ui.theme.ViNoteSurfaceContainerLowest
+import com.vinote.ui.theme.ViNoteTextPrimary
+import com.vinote.ui.theme.ViNoteTextSecondary
+import com.vinote.viewmodel.ViNoteViewModel
 
 @Composable
 fun SettingsScreen(
@@ -91,7 +91,7 @@ fun SettingsScreen(
     modifier: Modifier = Modifier
 ) {
     var notificationsEnabled by remember { mutableStateOf(true) }
-    var biometricEnabled by remember { mutableStateOf(true) }
+    val isBiometricEnabled by viewModel.isBiometricLockEnabled.collectAsState()
     var showClearHistoryDialog by remember { mutableStateOf(false) }
     var showHfKeyDialog by remember { mutableStateOf(false) }
     var hfApiKeyInput by remember { mutableStateOf("") }
@@ -101,6 +101,8 @@ fun SettingsScreen(
     val lastSyncTimestamp = syncSummary.lastSyncTimestamp
     val userProfile by viewModel.userProfile.collectAsState()
     val aiEngineStatus by viewModel.aiEngineStatus.collectAsState()
+    val isPrivacyMode by viewModel.isPrivacyModeEnabled.collectAsState()
+    val isScreenCapturePrevented by viewModel.isScreenCapturePrevented.collectAsState()
 
     var wifiOnlyCloud by remember { mutableStateOf(aiEngineStatus.isWifiOnlyPreferred) }
     var forceOfflineMode by remember { mutableStateOf(aiEngineStatus.isForceOffline) }
@@ -360,8 +362,8 @@ fun SettingsScreen(
                             icon = Icons.Default.Fingerprint,
                             title = "Biometrics & Passcode",
                             subtitle = "Require fingerprint on open",
-                            checked = biometricEnabled,
-                            onCheckedChange = { biometricEnabled = it }
+                            checked = isBiometricEnabled,
+                            onCheckedChange = { viewModel.setBiometricLockEnabled(it) }
                         )
                     }
                 }
@@ -416,11 +418,19 @@ fun SettingsScreen(
                     )
 
                     ViNoteCard(padding = 0.dp) {
-                        SettingsRow(
-                            icon = Icons.Default.FileDownload,
-                            title = "Export Transactions",
-                            subtitle = "Download CSV / PDF",
-                            onClick = {}
+                        SettingsToggleRow(
+                            icon = Icons.Default.Lock,
+                            title = "Mode Privasi (Sembunyikan Saldo)",
+                            subtitle = "Sensor nominal angka saldo & transaksi",
+                            checked = isPrivacyMode,
+                            onCheckedChange = { viewModel.togglePrivacyMode() }
+                        )
+                        SettingsToggleRow(
+                            icon = Icons.Default.Fingerprint,
+                            title = "Cegah Tangkapan Layar (FLAG_SECURE)",
+                            subtitle = "Blokir screenshot & preview di recent apps",
+                            checked = isScreenCapturePrevented,
+                            onCheckedChange = { viewModel.setScreenCapturePrevented(it) }
                         )
                         SettingsRow(
                             icon = Icons.Default.DeleteForever,

@@ -48,6 +48,20 @@ object OfflineNlpEngine {
         "setengah" to 500L
     )
 
+    private val learnedMerchantCache = java.util.concurrent.ConcurrentHashMap<String, String>()
+
+    fun registerLearnedMerchant(merchant: String, category: String) {
+        val norm = merchant.trim().lowercase()
+        if (norm.isNotBlank()) {
+            learnedMerchantCache[norm] = category
+        }
+    }
+
+    fun getLearnedCategory(merchant: String): String? {
+        val norm = merchant.trim().lowercase()
+        return learnedMerchantCache[norm]
+    }
+
     /**
      * Offline ASR + NLP Entity Extractor for Indonesian/English spoken financial utterances
      */
@@ -63,6 +77,16 @@ object OfflineNlpEngine {
         var detectedMerchant = ""
         var detectedTitle = ""
         var detectedAmount = 0L
+
+        // 0. Check Learned Merchant Cache First (Continuous On-Device NLP)
+        for ((learnedMerchant, learnedCategory) in learnedMerchantCache) {
+            if (lower.contains(learnedMerchant)) {
+                detectedMerchant = learnedMerchant.replaceFirstChar { it.uppercase() }
+                detectedCategory = learnedCategory
+                detectedTitle = detectedMerchant
+                break
+            }
+        }
 
         // 1. Detect Transaction Type (Income vs Expense)
         if (lower.contains("gaji") || lower.contains("salary") || lower.contains("bonus") ||

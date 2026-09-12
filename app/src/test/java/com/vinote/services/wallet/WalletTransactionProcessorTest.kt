@@ -105,6 +105,40 @@ class WalletTransactionProcessorTest {
             transactions.removeAll { it.id == id }
         }
 
+        override fun getTransactionsForUser(userId: String): kotlinx.coroutines.flow.Flow<List<TransactionItem>> =
+            kotlinx.coroutines.flow.flowOf(transactions.filter { it.userId == userId && it.isConfirmed })
+
+        override fun getPendingTransactionsForUser(userId: String): kotlinx.coroutines.flow.Flow<List<TransactionItem>> =
+            kotlinx.coroutines.flow.flowOf(transactions.filter { it.userId == userId && !it.isConfirmed })
+
+        override suspend fun findByFingerprint(fingerprint: String): TransactionItem? =
+            transactions.firstOrNull { it.fingerprint == fingerprint }
+
+        override suspend fun getTransactionById(id: Long): TransactionItem? =
+            transactions.firstOrNull { it.id == id }
+
+        override suspend fun getExpenseSumSince(userId: String, startTimestamp: Long): Long? =
+            transactions.filter { it.userId == userId && it.type == TransactionType.EXPENSE && it.timestamp >= startTimestamp }.sumOf { it.amount }
+
+        override suspend fun getTotalIncome(userId: String): Long? =
+            transactions.filter { it.userId == userId && it.type == TransactionType.INCOME }.sumOf { it.amount }
+
+        override suspend fun getTotalExpense(userId: String): Long? =
+            transactions.filter { it.userId == userId && it.type == TransactionType.EXPENSE }.sumOf { it.amount }
+
+        override suspend fun confirmTransaction(id: Long) {
+            val idx = transactions.indexOfFirst { it.id == id }
+            if (idx >= 0) transactions[idx] = transactions[idx].copy(isConfirmed = true)
+        }
+
+        override suspend fun deleteByFingerprint(fingerprint: String) {
+            transactions.removeAll { it.fingerprint == fingerprint }
+        }
+
+        override suspend fun clearUserTransactions(userId: String) {
+            transactions.removeAll { it.userId == userId }
+        }
+
         override suspend fun clearAll() {
             transactions.clear()
         }

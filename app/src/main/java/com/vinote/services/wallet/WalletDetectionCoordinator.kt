@@ -1,21 +1,21 @@
-package com.example.services.wallet
+package com.vinote.services.wallet
 
 import android.util.Log
-import com.example.data.local.DetectionEventDao
-import com.example.data.local.SyncQueueDao
-import com.example.data.local.TransactionDao
-import com.example.data.local.WalletAccountDao
-import com.example.data.local.entities.DetectionEventEntity
-import com.example.data.local.entities.DetectionStatus
-import com.example.data.local.entities.SyncOperation
-import com.example.data.local.entities.SyncQueueEntity
-import com.example.data.model.TransactionItem
-import com.example.data.model.TransactionSource
-import com.example.data.model.TransactionType
-import com.example.domain.ai.ViNoteAiService
-import com.example.domain.wallet.ParsedWalletTransaction
-import com.example.domain.wallet.WalletDetectionService
-import com.example.domain.wallet.WalletNotification
+import com.vinote.data.local.DetectionEventDao
+import com.vinote.data.local.SyncQueueDao
+import com.vinote.data.local.TransactionDao
+import com.vinote.data.local.WalletAccountDao
+import com.vinote.data.local.entities.DetectionEventEntity
+import com.vinote.data.local.entities.DetectionStatus
+import com.vinote.data.local.entities.SyncOperation
+import com.vinote.data.local.entities.SyncQueueEntity
+import com.vinote.data.model.TransactionItem
+import com.vinote.data.model.TransactionSource
+import com.vinote.data.model.TransactionType
+import com.vinote.domain.ai.ViNoteAiService
+import com.vinote.domain.wallet.ParsedWalletTransaction
+import com.vinote.domain.wallet.WalletDetectionService
+import com.vinote.domain.wallet.WalletNotification
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableSharedFlow
@@ -37,6 +37,7 @@ class WalletDetectionCoordinator(
     private val walletAccountDao: WalletAccountDao,
     private val syncQueueDao: SyncQueueDao,
     private val aiService: ViNoteAiService? = null,
+    private val notificationEngine: com.vinote.domain.notification.FinancialNotificationEngine? = null,
     private val scope: CoroutineScope = CoroutineScope(Dispatchers.IO)
 ) {
     // In-memory cache for fast hot-path deduplication in addition to Room persistence
@@ -203,6 +204,9 @@ class WalletDetectionCoordinator(
                     )
                 )
 
+                // Trigger system notification
+                notificationEngine?.notifyTransactionDetected(finalTx)
+
                 Log.i("WalletCoordinator", "Auto-recorded HIGH confidence tx: ${candidate.title} (${candidate.amount})")
                 Pair(true, "Auto-recorded ${candidate.title} (Rp ${candidate.amount})")
             } else if (confidence >= 0.70f) {
@@ -253,6 +257,9 @@ class WalletDetectionCoordinator(
                         status = DetectionStatus.PENDING_REVIEW
                     )
                 )
+
+                // Trigger actionable pending review notification with quick approve/reject
+                notificationEngine?.notifyPendingReview(finalPending)
 
                 Log.i("WalletCoordinator", "Saved MEDIUM confidence pending tx: ${candidate.title} (${candidate.amount})")
                 Pair(true, "Pending review: ${candidate.title} (Rp ${candidate.amount})")

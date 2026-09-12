@@ -21,10 +21,6 @@ class ViNoteAiService(
     private val openRouterClient: OpenRouterClient = OpenRouterClient()
 ) {
 
-    fun updateApiKey(apiKey: String) {
-        openRouterClient.setApiKey(apiKey)
-    }
-
     fun updateModel(model: String) {
         openRouterClient.setModel(model)
     }
@@ -39,7 +35,7 @@ class ViNoteAiService(
         // Fast offline parsing baseline
         val offlineResult = OfflineNlpEngine.parseSpokenTransaction(text)
 
-        if (!isOnlineAllowed || openRouterClient.getApiKey().isBlank()) {
+        if (!isOnlineAllowed) {
             return ParsedAiTransaction(
                 title = offlineResult.title,
                 amount = offlineResult.amount,
@@ -154,8 +150,8 @@ Return ONLY raw JSON with keys:
             )
         }
 
-        // If offline or no API key, use rich deterministic assistant rules
-        if (!isOnlineAllowed || openRouterClient.getApiKey().isBlank()) {
+        // If offline, use rich deterministic assistant rules
+        if (!isOnlineAllowed) {
             return generateOfflineAssistantResponse(clean, transactions, goals, dailyLimit, safeMoney)
         }
 
@@ -199,7 +195,7 @@ Return ONLY raw JSON with keys:
     ): ExtractedReceiptData {
         val offlineData = OfflineNlpEngine.parseReceiptTextLines(lines)
 
-        if (!isOnlineAllowed || openRouterClient.getApiKey().isBlank()) {
+        if (!isOnlineAllowed) {
             return offlineData
         }
 
@@ -291,12 +287,34 @@ Extract structured details as valid JSON:
                     "You haven't recorded any major expenses yet! Looking great!" to listOf("Add transaction", "Check goals")
                 }
             }
+            lower.contains("kategori") || lower.contains("category") -> {
+                val catBreakdown = transactions.filter { it.type == TransactionType.EXPENSE }
+                    .groupBy { it.category }
+                    .mapValues { entry -> entry.value.sumOf { it.amount } }
+                    .entries.sortedByDescending { it.value }
+                if (catBreakdown.isNotEmpty()) {
+                    val summary = catBreakdown.take(4).joinToString("\n") { (cat, amt) ->
+                        "- $cat: ${com.vinote.ui.components.FormatUtils.formatRupiah(amt)}"
+                    }
+                    "Breakdown pengeluaranmu per kategori:\n$summary" to listOf("Uangku paling banyak habis buat apa?", "Saran budget")
+                } else {
+                    "Belum ada pengeluaran berdasarkan kategori yang tercatat." to listOf("Add transaction", "Check balance")
+                }
+            }
+            lower.contains("saran") || lower.contains("50/30/20") || lower.contains("alokasi") -> {
+                val income = if (totalIncome > 0) totalIncome else 5000000L
+                val needs = (income * 0.50).toLong()
+                val wants = (income * 0.30).toLong()
+                val savings = (income * 0.20).toLong()
+                "Saran alokasi budget cerdas 50/30/20:\n- Kebutuhan Pokok (50%): ${com.vinote.ui.components.FormatUtils.formatRupiah(needs)}\n- Hiburan/Keinginan (30%): ${com.vinote.ui.components.FormatUtils.formatRupiah(wants)}\n- Tabungan & Investasi (20%): ${com.vinote.ui.components.FormatUtils.formatRupiah(savings)}" to listOf("Check my budget", "Help me save")
+            }
             lower.contains("nabung") || lower.contains("save") || lower.contains("goal") -> {
                 val goalCount = goals.size
-                "You have **$goalCount active savings goals**. Stay consistent by allocating surplus safe money at the end of each week!" to listOf("View goals", "Check balance")
+                val savingsRate = if (totalIncome > 0) (((totalIncome - totalExpense).coerceAtLeast(0L).toDouble() / totalIncome.toDouble()) * 100).toInt() else 0
+                "Rasio tabunganmu saat ini: **$savingsRate%** dengan **$goalCount target tabungan aktif**. Pertahankan disiplin mencatat ya! ✨" to listOf("View goals", "Check balance")
             }
             else -> {
-                "Hi! I'm NoTa 🌟 Ask me about your spending, safe money, savings goals, or say 'Makan 25rb pakai GoPay' to record an expense!" to listOf("Saldo aku berapa?", "Uangku paling banyak habis buat apa?", "Aku minggu ini boros gak?")
+                "Hi! I'm NoTa 🌟 Tanya aku seputar saldo, pengeluaran per kategori, tips menabung 50/30/20, atau ucapkan 'Makan 25rb pakai GoPay' untuk catat cepat!" to listOf("Saldo aku berapa?", "Kategori pengeluaran", "Saran budget")
             }
         }
 

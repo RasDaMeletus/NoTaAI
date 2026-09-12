@@ -5,6 +5,9 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.viewModels
+import androidx.lifecycle.lifecycleScope
+import androidx.lifecycle.repeatOnLifecycle
+import kotlinx.coroutines.launch
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
@@ -12,11 +15,15 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
@@ -26,10 +33,12 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -58,9 +67,19 @@ import com.vinote.ui.screens.VoiceInputScreen
 import com.vinote.ui.theme.MyApplicationTheme
 import com.vinote.ui.theme.ViNoteMintSuccess
 import com.vinote.ui.theme.ViNotePrimary
+import com.vinote.ui.theme.ViNoteSecondaryFixed
+import com.vinote.ui.theme.ViNoteSurface
+import com.vinote.ui.theme.ViNoteTextPrimary
 import com.vinote.viewmodel.ViNoteViewModel
+import com.vinote.domain.security.BiometricSecurityManager
+import com.vinote.domain.security.ShakeDetector
+import com.vinote.ui.widget.ViNoteQuickWidgetProvider
+import android.widget.Toast
+import dagger.hilt.android.AndroidEntryPoint
+import kotlinx.coroutines.delay
 
 enum class ActiveScreen {
+    SPLASH,
     MAIN_TABS,
     ADD_TRANSACTION,
     VOICE_INPUT,
@@ -74,35 +93,111 @@ enum class ActiveScreen {
     BANK_INTEGRATIONS
 }
 
+@AndroidEntryPoint
 class MainActivity : ComponentActivity() {
     private val viewModel: ViNoteViewModel by viewModels()
+    private var shakeDetector: ShakeDetector? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
-        setContent {
-            MyApplicationTheme {
-                ViNoteApp(viewModel = viewModel)
+
+        // Privacy: Prevent screenshot & task switcher capture when enabled (PRD Section 4.1)
+        lifecycleScope.launch {
+            repeatOnLifecycle(androidx.lifecycle.Lifecycle.State.STARTED) {
+                viewModel.isScreenCapturePrevented.collect { prevented ->
+                    if (prevented) {
+                        window.addFlags(android.view.WindowManager.LayoutParams.FLAG_SECURE)
+                    } else {
+                        window.clearFlags(android.view.WindowManager.LayoutParams.FLAG_SECURE)
+                    }
+                }
             }
         }
+
+        // Panic Mode: Shake 3x to toggle privacy masking (PRD Section 1.5 & 4.1)
+        shakeDetector = ShakeDetector(this) {
+            viewModel.togglePrivacyMode()
+            Toast.makeText(this, "Mode Privasi dialihkan (Panic Mode)", Toast.LENGTH_SHORT).show()
+        }
+
+        // Biometric Security Lock (PRD Section 1.5)
+        lifecycleScope.launch {
+            repeatOnLifecycle(androidx.lifecycle.Lifecycle.State.STARTED) {
+                viewModel.isBiometricLockEnabled.collect { isEnabled ->
+                    if (isEnabled && !viewModel.isAppUnlocked.value) {
+                        BiometricSecurityManager.authenticate(
+                            activity = this@MainActivity,
+                            onSuccess = {
+                                viewModel.setAppUnlocked(true)
+                            },
+                            onError = { reason ->
+                                Toast.makeText(this@MainActivity, "Kunci Biometrik: $reason", Toast.LENGTH_SHORT).show()
+                            }
+                        )
+                    }
+                }
+            }
+        }
+
+        val initialDestination = intent?.getStringExtra(ViNoteQuickWidgetProvider.EXTRA_NAVIGATE_TO)
+
+        setContent {
+            MyApplicationTheme {
+                ViNoteApp(
+                    viewModel = viewModel,
+                    initialDestination = initialDestination
+                )
+            }
+        }
+    }
+
+    override fun onResume() {
+        super.onResume()
+        shakeDetector?.startListening()
+    }
+
+    override fun onPause() {
+        super.onPause()
+        shakeDetector?.stopListening()
     }
 }
 
 @Composable
-fun ViNoteApp(viewModel: ViNoteViewModel) {
-    var currentScreen by remember { mutableStateOf(ActiveScreen.MAIN_TABS) }
+fun ViNoteApp(
+    viewModel: ViNoteViewModel,
+    initialDestination: String? = null
+) {
+    val startScreen = if (initialDestination == ViNoteQuickWidgetProvider.DESTINATION_ADD_TRANSACTION) {
+        ActiveScreen.ADD_TRANSACTION
+    } else {
+        ActiveScreen.SPLASH
+    }
+    var currentScreen by remember { mutableStateOf(startScreen) }
     var currentTab by remember { mutableStateOf(ViNoteNavTab.HOME) }
     var showCreateGoalDialog by remember { mutableStateOf(false) }
 
     val pendingTx by viewModel.pendingTransaction.collectAsState()
     val selectedDetailTx by viewModel.selectedTransactionDetail.collectAsState()
     val bannerText by viewModel.bannerNotification.collectAsState()
+    val isLoggedIn by viewModel.isLoggedIn.collectAsState()
+
+    // Splash → Auth routing
+    LaunchedEffect(isLoggedIn) {
+        if (currentScreen == ActiveScreen.SPLASH) {
+            delay(1800)
+            currentScreen = if (isLoggedIn) ActiveScreen.MAIN_TABS else ActiveScreen.ONBOARDING
+        }
+    }
 
     Box(modifier = Modifier.fillMaxSize()) {
         when (currentScreen) {
+            ActiveScreen.SPLASH -> {
+                SplashScreen()
+            }
             ActiveScreen.ONBOARDING -> {
                 OnboardingScreen(
-                    onSignInSuccess = { currentScreen = ActiveScreen.MAIN_TABS }
+                    onSignInSuccess = { currentScreen = ActiveScreen.QUICK_SETUP }
                 )
             }
             ActiveScreen.QUICK_SETUP -> {
@@ -282,6 +377,56 @@ fun ViNoteApp(viewModel: ViNoteViewModel) {
                     )
                 }
             }
+        }
+    }
+}
+
+@Composable
+fun SplashScreen() {
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(
+                Brush.verticalGradient(
+                    colors = listOf(
+                        ViNotePrimary.copy(alpha = 0.95f),
+                        ViNotePrimary
+                    )
+                )
+            ),
+        contentAlignment = Alignment.Center
+    ) {
+        Column(
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(20.dp)
+        ) {
+            Box(
+                modifier = Modifier
+                    .size(100.dp)
+                    .clip(CircleShape)
+                    .background(Color.White),
+                contentAlignment = Alignment.Center
+            ) {
+                Text(
+                    text = "N",
+                    fontSize = 42.sp,
+                    fontWeight = FontWeight.ExtraBold,
+                    color = ViNotePrimary
+                )
+            }
+            Text(
+                text = "NoTa",
+                fontSize = 28.sp,
+                fontWeight = FontWeight.ExtraBold,
+                color = Color.White,
+                letterSpacing = 2.sp
+            )
+            Text(
+                text = "Your Financial Companion",
+                fontSize = 14.sp,
+                fontWeight = FontWeight.Medium,
+                color = Color.White.copy(alpha = 0.8f)
+            )
         }
     }
 }

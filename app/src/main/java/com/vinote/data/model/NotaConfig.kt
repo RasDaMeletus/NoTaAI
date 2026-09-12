@@ -30,17 +30,17 @@ enum class NotaEyeState {
 }
 
 data class UserProfile(
-    val fullName: String = "Farras Syafiq",
-    val email: String = "farrassyafiq213@gmail.com",
-    val phone: String = "+62 812-3456-7890",
-    val monthlyIncome: Long = 5000000L,
-    val dailyBudgetLimit: Long = 180000L,
+    val fullName: String = "NoTa User",
+    val email: String = "",
+    val phone: String = "",
+    val monthlyIncome: Long = 0L,
+    val dailyBudgetLimit: Long = 0L,
     val savingsTargetPercentage: Int = 20,
     val currencyCode: String = "IDR",
     val currencySymbol: String = "Rp",
-    val financialPersona: String = "Strategic Saver",
+    val financialPersona: String = "Smart Saver",
     val isBudgetAlertActive: Boolean = true,
-    val avatarInitials: String = "FS"
+    val avatarInitials: String = "NU"
 )
 
 data class BankAccountItem(

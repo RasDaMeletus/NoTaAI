@@ -19,6 +19,17 @@ data class FinancialHealthReport(
     val activeGoalsProgress: Float
 )
 
+data class FinancialHealthScore(
+    val score: Int, // 0 to 100
+    val grade: String, // "S", "A", "B", "C", "D"
+    val savingsScore: Int, // 0 to 30
+    val budgetScore: Int, // 0 to 25
+    val goalScore: Int, // 0 to 20
+    val consistencyScore: Int, // 0 to 15
+    val balanceScore: Int, // 0 to 10
+    val advice: String
+)
+
 data class DailyTrendPoint(
     val dayLabel: String,
     val dateLabel: String,
@@ -239,6 +250,89 @@ object FinancialAnalyticsService {
             topCategoryAmount = topCatAmt,
             budgetUtilizationPercentage = budgetUtilPct,
             activeGoalsProgress = goalProgress
+        )
+    }
+
+    fun calculateFinancialHealthScore(
+        transactions: List<TransactionItem>,
+        goals: List<GoalItem>,
+        dailyLimit: Long,
+        monthlyIncome: Long,
+        startOfDayMs: Long
+    ): FinancialHealthScore {
+        val totalIncome = calculateTotalIncome(transactions)
+        val totalExpense = calculateTotalExpense(transactions)
+        val netBalance = totalIncome - totalExpense
+        val todaySpent = calculateSpentToday(transactions, startOfDayMs)
+
+        // 1. Savings Score (Max 30)
+        val savingsScore = if (totalIncome > 0) {
+            val savingsRate = (totalIncome - totalExpense).toDouble() / totalIncome.toDouble()
+            when {
+                savingsRate >= 0.30 -> 30
+                savingsRate >= 0.20 -> 25
+                savingsRate >= 0.10 -> 18
+                savingsRate > 0.0 -> 10
+                else -> 0
+            }
+        } else {
+            if (totalExpense == 0L) 20 else 5
+        }
+
+        // 2. Budget Score (Max 25)
+        val budgetScore = if (dailyLimit > 0) {
+            when {
+                todaySpent <= dailyLimit * 0.7 -> 25
+                todaySpent <= dailyLimit -> 20
+                todaySpent <= dailyLimit * 1.2 -> 10
+                else -> 0
+            }
+        } else {
+            20
+        }
+
+        // 3. Goal Progress Score (Max 20)
+        val totalGoalTarget = goals.sumOf { it.targetAmount }
+        val totalGoalCurrent = goals.sumOf { it.currentAmount }
+        val goalScore = if (totalGoalTarget > 0) {
+            ((totalGoalCurrent.toDouble() / totalGoalTarget.toDouble()) * 20).toInt().coerceIn(0, 20)
+        } else {
+            15
+        }
+
+        // 4. Spending Consistency Score (Max 15)
+        val consistencyScore = if (totalExpense > 0 && todaySpent <= dailyLimit) 15 else if (todaySpent <= dailyLimit * 1.3) 10 else 5
+
+        // 5. Balance Score (Max 10)
+        val balanceScore = if (netBalance > 0) 10 else 0
+
+        val totalScore = (savingsScore + budgetScore + goalScore + consistencyScore + balanceScore).coerceIn(0, 100)
+
+        val grade = when {
+            totalScore >= 90 -> "S"
+            totalScore >= 75 -> "A"
+            totalScore >= 60 -> "B"
+            totalScore >= 40 -> "C"
+            else -> "D"
+        }
+
+        val advice = when {
+            totalScore >= 90 -> "Luar biasa! Keuanganmu sangat sehat dan disiplin. Pertahankan ritme ini bersama Nota! ✨"
+            totalScore >= 75 -> "Kondisi keuangan prima. Terus konsisten menabung untuk mencapai target impianmu! 🎯"
+            totalScore >= 60 -> "Keuanganmu cukup stabil, namun perhatikan pengeluaran harian agar tidak mendekati batas limit. 💡"
+            totalScore >= 40 -> "Waspada! Pengeluaranmu mulai melebihi alokasi. Coba kurangi jajan non-esensial hari ini. ⚠️"
+            else -> "Keuangan dalam zona kritis! Pengeluaran melebihi pemasukan. Nota merekomendasikan rem belanja total sekarang! 💢"
+        }
+
+        return FinancialHealthScore(
+            score = totalScore,
+            grade = grade,
+            savingsScore = savingsScore,
+            budgetScore = budgetScore,
+            goalScore = goalScore,
+            consistencyScore = consistencyScore,
+            balanceScore = balanceScore,
+            advice = advice
         )
     }
 }

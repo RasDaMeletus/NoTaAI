@@ -1,12 +1,12 @@
-package com.example.data.local
+package com.vinote.data.local
 
 import androidx.room.Dao
 import androidx.room.Insert
 import androidx.room.OnConflictStrategy
 import androidx.room.Query
 import androidx.room.Update
-import com.example.data.local.entities.SyncQueueEntity
-import com.example.data.local.entities.SyncQueueStatus
+import com.vinote.data.local.entities.SyncQueueEntity
+import com.vinote.data.local.entities.SyncQueueStatus
 import kotlinx.coroutines.flow.Flow
 
 @Dao

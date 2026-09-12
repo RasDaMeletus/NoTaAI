@@ -26,10 +26,24 @@ import androidx.compose.material.icons.filled.DownloadDone
 import androidx.compose.material.icons.filled.EmojiEvents
 import androidx.compose.material.icons.filled.Face
 import androidx.compose.material.icons.filled.LocalFireDepartment
+import android.content.Intent
+import androidx.compose.material.icons.filled.FileDownload
 import androidx.compose.material.icons.filled.Palette
 import androidx.compose.material.icons.filled.Psychology
 import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.filled.Description
+import androidx.compose.material.icons.filled.UploadFile
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.LinearProgressIndicator
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.TextButton
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.material3.Icon
+import androidx.compose.ui.platform.LocalContext
+import com.vinote.domain.export.TransactionExportService
+import com.vinote.data.local.entities.WalletType
 import androidx.compose.material3.Switch
 import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
@@ -76,6 +90,19 @@ fun MeScreen(
 ) {
     val notaConfig by viewModel.notaConfig.collectAsState()
     val userProfile by viewModel.userProfile.collectAsState()
+    val unlockedCount by viewModel.unlockedAchievementsCount.collectAsState()
+    val achievementsList by viewModel.achievements.collectAsState()
+    val allTransactions by viewModel.allTransactions.collectAsState()
+    val savingStreakDays by viewModel.savingStreakDays.collectAsState()
+    val walletAccounts by viewModel.walletAccounts.collectAsState()
+
+    val userLevel = 1 + unlockedCount + (allTransactions.size / 5)
+    val levelProgress = ((allTransactions.size % 5) / 5f).coerceIn(0.1f, 1.0f)
+    val eWalletCount = walletAccounts.count { it.type == WalletType.EWALLET && it.isConnected }
+    val bankCount = walletAccounts.count { it.type == WalletType.BANK && it.isConnected }
+
+    var showAchievementsDialog by remember { mutableStateOf(false) }
+    var showImportCsvDialog by remember { mutableStateOf(false) }
 
     Box(
         modifier = modifier
@@ -108,7 +135,7 @@ fun MeScreen(
                     Spacer(modifier = Modifier.height(14.dp))
 
                     Text(
-                        text = userProfile.fullName,
+                        text = userProfile.fullName.ifBlank { "NoTa User" },
                         fontSize = 24.sp,
                         fontWeight = FontWeight.Bold,
                         color = ViNoteTextPrimary
@@ -135,7 +162,7 @@ fun MeScreen(
 
                     Spacer(modifier = Modifier.height(16.dp))
 
-                    // Level 8 Bar
+                    // Dynamic Level Bar
                     ViNoteCard(padding = 16.dp) {
                         Row(
                             modifier = Modifier.fillMaxWidth(),
@@ -143,13 +170,13 @@ fun MeScreen(
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             Text(
-                                text = "Level 8",
+                                text = "Level $userLevel",
                                 fontSize = 15.sp,
                                 fontWeight = FontWeight.Bold,
                                 color = ViNoteTextPrimary
                             )
                             Text(
-                                text = "80%",
+                                text = "${(levelProgress * 100).toInt()}%",
                                 fontSize = 13.sp,
                                 fontWeight = FontWeight.SemiBold,
                                 color = ViNotePrimary
@@ -157,7 +184,7 @@ fun MeScreen(
                         }
                         Spacer(modifier = Modifier.height(8.dp))
                         ViNoteProgressBar(
-                            progress = 0.8f,
+                            progress = levelProgress,
                             fillColor = ViNotePrimary
                         )
                     }
@@ -186,9 +213,9 @@ fun MeScreen(
                             iconBg = ViNoteWarmYellow.copy(alpha = 0.5f),
                             iconTint = Color(0xFF8C4B00),
                             title = "Achievements",
-                            subtitle = "12 Unlocked",
+                            subtitle = "$unlockedCount Terbuka",
                             modifier = Modifier.weight(1f),
-                            onClick = {}
+                            onClick = { showAchievementsDialog = true }
                         )
 
                         // Bento 2: Saving Streak
@@ -197,7 +224,7 @@ fun MeScreen(
                             iconBg = ViNoteTertiaryFixed,
                             iconTint = ViNoteTertiaryContainer,
                             title = "Saving Streak",
-                            subtitle = "14 Days",
+                            subtitle = if (savingStreakDays > 0) "$savingStreakDays Days" else "0 Days",
                             modifier = Modifier.weight(1f),
                             onClick = {}
                         )
@@ -223,7 +250,7 @@ fun MeScreen(
                             iconBg = ViNoteSecondaryFixed,
                             iconTint = ViNotePrimary,
                             title = "E-Wallets",
-                            subtitle = "3 Linked",
+                            subtitle = if (eWalletCount > 0) "$eWalletCount Linked" else "Not Linked",
                             onClick = onNavigateToEWallets,
                             showDivider = true
                         )
@@ -232,7 +259,7 @@ fun MeScreen(
                             iconBg = ViNoteMintSuccess.copy(alpha = 0.2f),
                             iconTint = ViNoteMintSuccess,
                             title = "Bank Accounts & Open Banking",
-                            subtitle = "BCA, Mandiri, Jago Linked",
+                            subtitle = if (bankCount > 0) "$bankCount Linked" else "Not Linked",
                             onClick = onNavigateToBankIntegrations,
                             showDivider = false
                         )
@@ -295,6 +322,51 @@ fun MeScreen(
                             title = "Settings",
                             subtitle = "Preferences & Security",
                             onClick = onNavigateToSettings,
+                            showDivider = true
+                        )
+
+                        val context = LocalContext.current
+                        MenuItemRow(
+                            icon = Icons.Default.FileDownload,
+                            iconBg = ViNoteSecondaryFixed,
+                            iconTint = ViNotePrimary,
+                            title = "Ekspor Laporan Transaksi (CSV)",
+                            subtitle = "Download & bagikan file data offline",
+                            onClick = {
+                                try {
+                                    val file = viewModel.exportTransactionsCsv(context)
+                                    val shareIntent = TransactionExportService.createShareIntent(context, file)
+                                    context.startActivity(Intent.createChooser(shareIntent, "Bagikan Laporan Transaksi (CSV)"))
+                                } catch (e: Exception) {
+                                    viewModel.showBanner("Gagal mengekspor: ${e.message}")
+                                }
+                            },
+                            showDivider = true
+                        )
+
+                        MenuItemRow(
+                            icon = Icons.Default.Description,
+                            iconBg = ViNoteSecondaryFixed,
+                            iconTint = ViNotePrimary,
+                            title = "Ekspor Laporan Transaksi (PDF)",
+                            subtitle = "Dokumen resmi & tabel transaksi siap cetak",
+                            onClick = {
+                                try {
+                                    viewModel.exportTransactionsToPdf(context)
+                                } catch (e: Exception) {
+                                    viewModel.showBanner("Gagal mengekspor PDF: ${e.message}")
+                                }
+                            },
+                            showDivider = true
+                        )
+
+                        MenuItemRow(
+                            icon = Icons.Default.UploadFile,
+                            iconBg = ViNoteTertiaryContainer,
+                            iconTint = ViNotePrimary,
+                            title = "Impor Mutasi Transaksi (CSV)",
+                            subtitle = "Impor data e-statement atau backup NoTa",
+                            onClick = { showImportCsvDialog = true },
                             showDivider = true
                         )
 
@@ -387,7 +459,183 @@ fun MeScreen(
                 Spacer(modifier = Modifier.height(80.dp))
             }
         }
+
+        if (showAchievementsDialog) {
+            AlertDialog(
+                onDismissRequest = { showAchievementsDialog = false },
+                title = {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(text = "🏆", fontSize = 24.sp)
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(
+                            text = "Prestasi Finansial ($unlockedCount/${achievementsList.size})",
+                            fontSize = 17.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = ViNoteTextPrimary
+                        )
+                    }
+                },
+                text = {
+                    LazyColumn(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        items(achievementsList.size) { idx ->
+                            val ach = achievementsList[idx]
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clip(RoundedCornerShape(12.dp))
+                                    .background(if (ach.isUnlocked) ViNoteSecondaryFixed.copy(alpha = 0.35f) else ViNoteSurfaceContainerLow)
+                                    .padding(12.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text(text = ach.icon, fontSize = 26.sp)
+                                Spacer(modifier = Modifier.width(12.dp))
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Text(
+                                            text = ach.title,
+                                            fontWeight = FontWeight.Bold,
+                                            fontSize = 14.sp,
+                                            color = ViNoteTextPrimary
+                                        )
+                                        Text(
+                                            text = if (ach.isUnlocked) "Terbuka 🎉" else "${ach.progress}/${ach.target}",
+                                            fontSize = 11.sp,
+                                            fontWeight = FontWeight.SemiBold,
+                                            color = if (ach.isUnlocked) ViNoteMintSuccess else ViNoteTextSecondary
+                                        )
+                                    }
+                                    Spacer(modifier = Modifier.height(2.dp))
+                                    Text(
+                                        text = ach.description,
+                                        fontSize = 11.sp,
+                                        color = ViNoteTextSecondary,
+                                        lineHeight = 14.sp
+                                    )
+                                    if (!ach.isUnlocked && ach.target > 1) {
+                                        Spacer(modifier = Modifier.height(6.dp))
+                                        LinearProgressIndicator(
+                                            progress = { (ach.progress.toFloat() / ach.target.toFloat()).coerceIn(0f, 1f) },
+                                            modifier = Modifier.fillMaxWidth().height(4.dp).clip(RoundedCornerShape(2.dp)),
+                                            color = ViNotePrimary,
+                                            trackColor = ViNoteSurfaceContainerLowest
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
+                },
+                confirmButton = {
+                    TextButton(onClick = { showAchievementsDialog = false }) {
+                        Text("Tutup", fontWeight = FontWeight.Bold, color = ViNotePrimary)
+                    }
+                }
+            )
+        }
+
+        if (showImportCsvDialog) {
+            ImportCsvDialog(
+                onDismiss = { showImportCsvDialog = false },
+                onImport = { csvText ->
+                    viewModel.importTransactionsFromCsv(csvText) {
+                        showImportCsvDialog = false
+                    }
+                }
+            )
+        }
     }
+}
+
+@Composable
+private fun ImportCsvDialog(
+    onDismiss: () -> Unit,
+    onImport: (String) -> Unit
+) {
+    var csvText by remember { mutableStateOf("") }
+    val sampleCsv = "Tanggal,Keterangan,Nominal,Tipe\n" +
+            "2026-09-06,Kopi Janji Jiwa,22000,Pengeluaran\n" +
+            "2026-09-06,Makan Siang Soto,30000,Pengeluaran\n" +
+            "2026-09-05,Transfer Masuk Bonus,500000,Pemasukan"
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(text = "📥", fontSize = 24.sp)
+                Spacer(modifier = Modifier.width(8.dp))
+                Text(
+                    text = "Impor Mutasi Transaksi (CSV)",
+                    fontSize = 17.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = ViNoteTextPrimary
+                )
+            }
+        },
+        text = {
+            Column(
+                modifier = Modifier.fillMaxWidth(),
+                verticalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                Text(
+                    text = "Tempel teks mutasi rekening/e-wallet format CSV atau ekspor NoTa di bawah.",
+                    fontSize = 13.sp,
+                    color = ViNoteTextSecondary
+                )
+
+                OutlinedTextField(
+                    value = csvText,
+                    onValueChange = { csvText = it },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(140.dp),
+                    placeholder = {
+                        Text(
+                            text = "Tanggal,Keterangan,Nominal,Tipe\n2026-09-06,Kopi Kenangan,25000,Pengeluaran",
+                            fontSize = 12.sp,
+                            color = ViNoteTextSecondary.copy(alpha = 0.5f)
+                        )
+                    },
+                    shape = RoundedCornerShape(12.dp)
+                )
+
+                TextButton(
+                    onClick = { csvText = sampleCsv },
+                    modifier = Modifier.align(Alignment.End)
+                ) {
+                    Text(
+                        text = "Isi Contoh Sampel",
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        color = ViNotePrimary
+                    )
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(
+                onClick = { onImport(csvText) },
+                enabled = csvText.isNotBlank()
+            ) {
+                Text(
+                    text = "Impor Data",
+                    fontWeight = FontWeight.Bold,
+                    color = if (csvText.isNotBlank()) ViNotePrimary else ViNoteTextSecondary
+                )
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text("Batal", color = ViNoteTextSecondary)
+            }
+        }
+    )
 }
 
 @Composable

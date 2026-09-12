@@ -351,8 +351,9 @@ fun BankIntegrationsScreen(
                                         fontWeight = FontWeight.Bold,
                                         color = ViNoteTextPrimary
                                     )
+                                    val holderSuffix = if (item.accountHolder.isNotBlank()) " • ${item.accountHolder}" else ""
                                     Text(
-                                        text = "${item.accountNumber} • ${item.accountHolder}",
+                                        text = "${item.accountNumber}$holderSuffix",
                                         fontSize = 12.sp,
                                         color = ViNoteTextSecondary
                                     )

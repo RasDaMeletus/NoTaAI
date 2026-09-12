@@ -22,10 +22,12 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.AddCircleOutline
 import androidx.compose.material.icons.filled.Backspace
 import androidx.compose.material.icons.filled.EditNote
 import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.ReceiptLong
+import androidx.compose.material.icons.filled.RemoveCircleOutline
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.Text
@@ -43,6 +45,7 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.vinote.data.model.TransactionType
 import com.vinote.ui.components.FormatUtils
 import com.vinote.ui.components.ViNoteButton
 import com.vinote.ui.components.ViNoteButtonType
@@ -64,10 +67,13 @@ fun AddTransactionScreen(
     modifier: Modifier = Modifier
 ) {
     val keypadAmount by viewModel.keypadAmount.collectAsState()
+    val templates by viewModel.transactionTemplates.collectAsState()
     var selectedCategory by remember { mutableStateOf("Food") }
     val categories = listOf("Food", "Transport", "Shopping", "Bills", "Coffee", "Entertainment")
 
     val amountLong = keypadAmount.toLongOrNull() ?: 0L
+
+    var selectedTransactionType by remember { mutableStateOf(TransactionType.EXPENSE) }
 
     Box(
         modifier = modifier
@@ -114,6 +120,31 @@ fun AddTransactionScreen(
             }
 
             Spacer(modifier = Modifier.height(10.dp))
+
+            // Transaction Type Selector (Expense / Income)
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(50))
+                    .background(ViNoteSurfaceContainerLow)
+                    .padding(4.dp),
+                horizontalArrangement = Arrangement.spacedBy(4.dp)
+            ) {
+                TransactionTypeTab(
+                    title = "Expense",
+                    icon = Icons.Default.RemoveCircleOutline,
+                    selected = selectedTransactionType == TransactionType.EXPENSE,
+                    onClick = { selectedTransactionType = TransactionType.EXPENSE }
+                )
+                TransactionTypeTab(
+                    title = "Income",
+                    icon = Icons.Default.AddCircleOutline,
+                    selected = selectedTransactionType == TransactionType.INCOME,
+                    onClick = { selectedTransactionType = TransactionType.INCOME }
+                )
+            }
+
+            Spacer(modifier = Modifier.height(16.dp))
 
             // Mode Switcher Tabs (Manual, Scan, Voice)
             Row(
@@ -196,6 +227,45 @@ fun AddTransactionScreen(
                 }
             }
 
+            if (templates.isNotEmpty()) {
+                Spacer(modifier = Modifier.height(10.dp))
+                Text(
+                    text = "TEMPLATE CEPAT",
+                    fontSize = 11.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = ViNoteTextSecondary,
+                    letterSpacing = 0.08.sp,
+                    modifier = Modifier.align(Alignment.Start)
+                )
+                Spacer(modifier = Modifier.height(6.dp))
+                LazyRow(
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    items(templates) { tmpl ->
+                        Box(
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(12.dp))
+                                .background(ViNoteSurfaceContainerLowest)
+                                .border(1.dp, Color(0x1F747789), RoundedCornerShape(12.dp))
+                                .clickable {
+                                    viewModel.applyTemplate(tmpl)
+                                    selectedCategory = tmpl.category
+                                    selectedTransactionType = tmpl.type
+                                }
+                                .padding(horizontal = 12.dp, vertical = 6.dp)
+                        ) {
+                            Text(
+                                text = "${tmpl.name} (${FormatUtils.formatRupiah(tmpl.amount)})",
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.Medium,
+                                color = ViNoteTextPrimary
+                            )
+                        }
+                    }
+                }
+            }
+
             Spacer(modifier = Modifier.weight(1f))
 
             // Numeric Keypad (3x4 Grid)
@@ -241,18 +311,97 @@ fun AddTransactionScreen(
 
             // Confirm Button
             ViNoteButton(
-                text = "Confirm Amount",
+                text = if (selectedTransactionType == TransactionType.EXPENSE) "Confirm Expense" else "Confirm Income",
                 onClick = {
                     if (amountLong > 0) {
-                        viewModel.preparePendingTransactionFromKeypad(category = selectedCategory, title = selectedCategory)
+                        viewModel.preparePendingTransactionFromKeypad(
+                            category = selectedCategory,
+                            title = selectedCategory,
+                            type = selectedTransactionType
+                        )
                     }
                 },
                 enabled = amountLong > 0,
                 testTag = "confirm_amount_btn"
             )
 
+            if (amountLong > 0) {
+                Spacer(modifier = Modifier.height(8.dp))
+                Row(
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(8.dp))
+                        .clickable {
+                            viewModel.saveTransactionTemplate(
+                                name = selectedCategory,
+                                amount = amountLong,
+                                category = selectedCategory,
+                                type = selectedTransactionType
+                            )
+                        }
+                        .padding(horizontal = 12.dp, vertical = 6.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.EditNote,
+                        contentDescription = "Save template",
+                        tint = ViNotePrimary,
+                        modifier = Modifier.size(16.dp)
+                    )
+                    Spacer(modifier = Modifier.width(4.dp))
+                    Text(
+                        text = "Simpan sebagai Template",
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        color = ViNotePrimary
+                    )
+                }
+            }
+
             Spacer(modifier = Modifier.navigationBarsPadding().height(16.dp))
         }
+    }
+}
+
+@Composable
+private fun TransactionTypeTab(
+    title: String,
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    selected: Boolean,
+    onClick: () -> Unit
+) {
+    val tint = if (selected) {
+        if (title == "Expense") Color(0xFFE53935) else Color(0xFF43A047)
+    } else {
+        ViNoteTextSecondary
+    }
+    val bg = if (selected) {
+        if (title == "Expense") Color(0x33E53935) else Color(0x3343A047)
+    } else {
+        Color.Transparent
+    }
+
+    Row(
+        modifier = Modifier
+            .clip(RoundedCornerShape(50))
+            .background(bg)
+            .clickable(onClick = onClick)
+            .padding(horizontal = 14.dp, vertical = 8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.Center
+    ) {
+        Icon(
+            imageVector = icon,
+            contentDescription = title,
+            tint = tint,
+            modifier = Modifier.size(16.dp)
+        )
+        Spacer(modifier = Modifier.width(6.dp))
+        Text(
+            text = title,
+            fontSize = 13.sp,
+            fontWeight = FontWeight.SemiBold,
+            color = tint
+        )
     }
 }
 

@@ -1,4 +1,4 @@
-package com.example.ui.screens
+package com.vinote.ui.screens
 
 import android.Manifest
 import android.content.pm.PackageManager
@@ -71,25 +71,25 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
-import com.example.data.engine.OfflineNlpEngine
-import com.example.ui.components.FormatUtils
-import com.example.ui.theme.ViNoteMintSuccess
-import com.example.ui.theme.ViNoteOnPrimary
-import com.example.ui.theme.ViNoteOutlineVariant
-import com.example.ui.theme.ViNotePrimary
-import com.example.ui.theme.ViNotePrimaryContainer
-import com.example.ui.theme.ViNotePrimaryFixed
-import com.example.ui.theme.ViNotePrimaryFixedDim
-import com.example.ui.theme.ViNoteSecondaryContainer
-import com.example.ui.theme.ViNoteSecondaryFixed
-import com.example.ui.theme.ViNoteSurface
-import com.example.ui.theme.ViNoteSurfaceContainerHigh
-import com.example.ui.theme.ViNoteSurfaceContainerLow
-import com.example.ui.theme.ViNoteSurfaceContainerLowest
-import com.example.ui.theme.ViNoteTertiaryFixed
-import com.example.ui.theme.ViNoteTextPrimary
-import com.example.ui.theme.ViNoteTextSecondary
-import com.example.viewmodel.ViNoteViewModel
+import com.vinote.data.engine.OfflineNlpEngine
+import com.vinote.ui.components.FormatUtils
+import com.vinote.ui.theme.ViNoteMintSuccess
+import com.vinote.ui.theme.ViNoteOnPrimary
+import com.vinote.ui.theme.ViNoteOutlineVariant
+import com.vinote.ui.theme.ViNotePrimary
+import com.vinote.ui.theme.ViNotePrimaryContainer
+import com.vinote.ui.theme.ViNotePrimaryFixed
+import com.vinote.ui.theme.ViNotePrimaryFixedDim
+import com.vinote.ui.theme.ViNoteSecondaryContainer
+import com.vinote.ui.theme.ViNoteSecondaryFixed
+import com.vinote.ui.theme.ViNoteSurface
+import com.vinote.ui.theme.ViNoteSurfaceContainerHigh
+import com.vinote.ui.theme.ViNoteSurfaceContainerLow
+import com.vinote.ui.theme.ViNoteSurfaceContainerLowest
+import com.vinote.ui.theme.ViNoteTertiaryFixed
+import com.vinote.ui.theme.ViNoteTextPrimary
+import com.vinote.ui.theme.ViNoteTextSecondary
+import com.vinote.viewmodel.ViNoteViewModel
 
 @Composable
 fun VoiceInputScreen(

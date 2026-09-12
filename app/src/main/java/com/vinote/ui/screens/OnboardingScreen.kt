@@ -148,12 +148,41 @@ fun OnboardingScreen(
                 modifier = Modifier
                     .fillMaxWidth()
                     .navigationBarsPadding()
-                    .padding(bottom = 24.dp)
+                    .padding(bottom = 24.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp),
+                horizontalAlignment = Alignment.CenterHorizontally
             ) {
+                if (authState is AuthState.Error) {
+                    Text(
+                        text = (authState as AuthState.Error).message,
+                        color = Color(0xFFE53935),
+                        fontSize = 13.sp,
+                        textAlign = TextAlign.Center,
+                        modifier = Modifier.padding(horizontal = 8.dp)
+                    )
+                }
+
                 ViNoteButton(
-                    text = "Sign in with Google",
-                    onClick = { launcher.launch(viewModel.getSignInIntent()) },
+                    text = if (authState is AuthState.Loading) "Signing in..." else "Sign in with Google",
+                    onClick = {
+                        try {
+                            val intent = viewModel.getSignInIntent()
+                            launcher.launch(intent)
+                        } catch (_: Throwable) {
+                            // If Google Play Services or intent fails on device, fallback to direct guest login
+                            viewModel.loginDirectly()
+                        }
+                    },
                     testTag = "onboarding_google_sign_in_btn"
+                )
+
+                ViNoteButton(
+                    text = "Lanjut sebagai Tamu (Offline)",
+                    type = ViNoteButtonType.SECONDARY,
+                    onClick = {
+                        viewModel.loginDirectly()
+                    },
+                    testTag = "onboarding_guest_sign_in_btn"
                 )
             }
         }
