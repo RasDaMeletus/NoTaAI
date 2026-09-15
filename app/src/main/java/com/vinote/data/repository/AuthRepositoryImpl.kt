@@ -1,29 +1,24 @@
 package com.vinote.data.repository
 
-import com.google.firebase.auth.FirebaseAuth
-import com.vinote.domain.model.AuthResult
 import com.vinote.data.supabase.SupabaseClientProvider
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.tasks.await
 import javax.inject.Inject
 import javax.inject.Singleton
 import io.github.jan.supabase.gotrue.user.UserSession as SupabaseSession
 import io.github.jan.supabase.gotrue.auth
 import io.github.jan.supabase.gotrue.SessionStatus
-import io.github.jan.supabase.gotrue.providers.Google as SupabaseGoogleProvider
 import io.github.jan.supabase.gotrue.providers.builtin.Email as SupabaseEmailProvider
 
 /**
- * Implementation of AuthRepository using Firebase Authentication and Supabase Authentication.
+ * Implementation of AuthRepository using Supabase Authentication as the sole auth provider.
  */
 @Singleton
 class AuthRepositoryImpl @Inject constructor(
-    private val firebaseAuth: FirebaseAuth,
-    private val supabaseClientProvider: SupabaseClientProvider? = null
+    private val supabaseClientProvider: SupabaseClientProvider
 ) : AuthRepository {
 
     private val _userId = MutableStateFlow<String?>(null)
@@ -36,38 +31,30 @@ class AuthRepositoryImpl @Inject constructor(
     override val supabaseSessionFlow: StateFlow<SupabaseSession?> = _supabaseSessionFlow
 
     init {
-        // Firebase auth state listener
-        firebaseAuth.addAuthStateListener { auth ->
-            val uid = auth.currentUser?.uid
-            _userId.value = uid
-            _currentSession.value = uid?.let {
-                com.vinote.data.local.entity.UserSession(
-                    userId = it,
-                    email = auth.currentUser?.email ?: "",
-                    name = auth.currentUser?.displayName ?: "",
-                    isAuthenticated = true
-                )
-            }
-        }
-        val uid = firebaseAuth.currentUser?.uid
-        _userId.value = uid
-        _currentSession.value = uid?.let {
-            com.vinote.data.local.entity.UserSession(
-                userId = it,
-                email = firebaseAuth.currentUser?.email ?: "",
-                name = firebaseAuth.currentUser?.displayName ?: "",
-                isAuthenticated = true
-            )
-        }
-
         // Supabase auth state listener (guarded for offline-first resilience)
         supabaseClientProvider?.clientOrNull?.let { supabaseClient ->
             CoroutineScope(Dispatchers.IO).launch {
                 try {
                     supabaseClient.auth.sessionStatus.collect { status ->
-                        _supabaseSessionFlow.value = when (status) {
+                        val session = when (status) {
                             is SessionStatus.Authenticated -> status.session
                             else -> null
+                        }
+                        _supabaseSessionFlow.value = session
+                        val user = session?.user
+                        if (user != null) {
+                            _userId.value = user.id
+                            _currentSession.value = com.vinote.data.local.entity.UserSession(
+                                userId = user.id,
+                                email = user.email ?: "",
+                                name = user.userMetadata?.get("full_name")?.toString() ?: "NoTa User",
+                                isAuthenticated = true
+                            )
+                        } else {
+                            if (_userId.value?.startsWith("user_") != true) {
+                                _userId.value = null
+                                _currentSession.value = null
+                            }
                         }
                     }
                 } catch (t: Throwable) {
@@ -77,7 +64,7 @@ class AuthRepositoryImpl @Inject constructor(
         }
     }
 
-    override fun getUserId(): String? = firebaseAuth.currentUser?.uid ?: _userId.value
+    override fun getUserId(): String? = _userId.value
 
     override fun setUserId(userId: String?) {
         _userId.value = userId
@@ -94,14 +81,13 @@ class AuthRepositoryImpl @Inject constructor(
     }
 
     override fun clearUserId() {
-        firebaseAuth.signOut()
         _userId.value = null
         _currentSession.value = null
     }
 
-    override fun isAuthenticated(): Boolean = firebaseAuth.currentUser != null || (_currentSession.value?.isAuthenticated == true)
+    override fun isAuthenticated(): Boolean = _currentSession.value?.isAuthenticated == true
 
-    override fun getCanonicalUserId(): String = firebaseAuth.currentUser?.uid ?: _userId.value ?: "user_default"
+    override fun getCanonicalUserId(): String = _userId.value ?: "user_default"
 
     override fun loginWithDirectProfile(email: String, name: String, provider: String) {
         val uid = "user_${System.currentTimeMillis()}"
@@ -115,19 +101,13 @@ class AuthRepositoryImpl @Inject constructor(
         )
     }
 
-    suspend fun getIdToken(): String? {
-        return firebaseAuth.currentUser?.getIdToken(false)?.await()?.token
-    }
-
-    fun getCurrentFirebaseUser() = firebaseAuth.currentUser
-
     // ===== Supabase Authentication Implementation =====
 
     override suspend fun signInWithSupabaseGoogle(): Result<Unit> {
         return try {
             val client = supabaseClientProvider?.clientOrNull
                 ?: return Result.failure(IllegalStateException("Supabase is not configured"))
-            client.auth.signInWith(SupabaseGoogleProvider)
+            client.auth.signInWith(io.github.jan.supabase.gotrue.providers.Google)
             Result.success(Unit)
         } catch (t: Throwable) {
             Result.failure(t)

@@ -1,5 +1,5 @@
 {
-  "name": "ViNote",
+  "name": "NoTa",
   "description": "Financial companion app with interactive character Nota, smart expense tracking, goals, wallet detection, and AI assistant.",
   "requestFramePermissions": [],
   "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]

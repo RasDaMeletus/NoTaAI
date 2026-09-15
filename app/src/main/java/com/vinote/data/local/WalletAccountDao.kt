@@ -13,6 +13,9 @@ interface WalletAccountDao {
     @Query("SELECT * FROM wallet_accounts WHERE userId = :userId ORDER BY name ASC")
     fun getWalletsForUserFlow(userId: String): Flow<List<WalletAccountEntity>>
 
+    @Query("SELECT * FROM wallet_accounts ORDER BY name ASC")
+    fun getAllWalletsFlow(): Flow<List<WalletAccountEntity>>
+
     @Query("SELECT * FROM wallet_accounts WHERE userId = :userId ORDER BY name ASC")
     suspend fun getWalletsForUser(userId: String): List<WalletAccountEntity>
 
@@ -48,4 +51,13 @@ interface WalletAccountDao {
 
     @Query("DELETE FROM wallet_accounts WHERE userId = :userId")
     suspend fun clearUserWallets(userId: String)
+
+    @Query("SELECT * FROM wallet_accounts WHERE gatewayType IS NOT NULL AND gatewayType != '' ORDER BY name ASC")
+    suspend fun getAllWalletsWithGateway(): List<WalletAccountEntity>
+
+    @Query("SELECT * FROM wallet_accounts WHERE gatewayType IS NOT NULL AND gatewayType != '' ORDER BY name ASC")
+    fun getAllWalletsWithGatewayFlow(): Flow<List<WalletAccountEntity>>
+
+    @Query("UPDATE wallet_accounts SET calculatedBalance = :balance WHERE id = :id")
+    suspend fun updateBalance(id: String, balance: Double)
 }

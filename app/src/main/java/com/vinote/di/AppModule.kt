@@ -1,21 +1,26 @@
 package com.vinote.di
 
 import android.content.Context
-import com.google.firebase.auth.FirebaseAuth
 import com.vinote.core.ai.OpenRouterClient
+import com.vinote.data.gateway.MidtransGatewayService
+import com.vinote.data.gateway.PaymentGatewayService
+import com.vinote.data.gateway.UnofficialDanaService
+import com.vinote.data.gateway.UnofficialGoPayService
+import com.vinote.data.gateway.UnofficialOvoService
 import com.vinote.data.local.BudgetDao
 import com.vinote.data.local.GoalDao
+import com.vinote.data.local.NoTaDatabase
 import com.vinote.data.local.SyncQueueDao
+import com.vinote.data.local.TransactionCategoryDao
 import com.vinote.data.local.TransactionDao
-import com.vinote.data.local.ViNoteDatabase
 import com.vinote.data.local.WalletAccountDao
 import com.vinote.data.repository.AuthRepository
 import com.vinote.data.repository.AuthRepositoryImpl
 import com.vinote.data.repository.FirestoreExpenseSyncRepository
 import com.vinote.data.repository.FirestoreWalletBudgetSyncRepository
+import com.vinote.data.repository.WalletGatewayRepository
 import com.vinote.data.supabase.SupabaseClientProvider
-import com.vinote.domain.ai.ViNoteAiService
-import com.vinote.domain.auth.GoogleSignInManager
+import com.vinote.domain.ai.NoTaAiService
 import com.vinote.domain.transaction.TransactionService
 import com.vinote.services.wallet.WalletDeduplicationService
 import com.vinote.services.wallet.WalletTransactionProcessor
@@ -25,6 +30,8 @@ import dagger.Provides
 import dagger.hilt.InstallIn
 import dagger.hilt.android.qualifiers.ApplicationContext
 import dagger.hilt.components.SingletonComponent
+import dagger.multibindings.IntoSet
+import dagger.multibindings.ElementsIntoSet
 import javax.inject.Singleton
 
 @Module
@@ -33,28 +40,27 @@ object DatabaseModule {
 
     @Provides
     @Singleton
-    fun provideDatabase(@ApplicationContext context: Context): ViNoteDatabase {
-        return ViNoteDatabase.getDatabase(context)
-    }
+    fun provideDatabase(@ApplicationContext context: Context): NoTaDatabase {
+            return NoTaDatabase.getDatabase(context)
+        }
+
+        @Provides
+        fun provideTransactionDao(db: NoTaDatabase): TransactionDao = db.transactionDao()
 
     @Provides
-    @Singleton
-    fun provideFirebaseAuth(): FirebaseAuth = FirebaseAuth.getInstance()
+    fun provideGoalDao(db: NoTaDatabase): GoalDao = db.goalDao()
 
     @Provides
-    fun provideTransactionDao(db: ViNoteDatabase): TransactionDao = db.transactionDao()
+    fun provideWalletAccountDao(db: NoTaDatabase): WalletAccountDao = db.walletAccountDao()
 
     @Provides
-    fun provideGoalDao(db: ViNoteDatabase): GoalDao = db.goalDao()
+    fun provideBudgetDao(db: NoTaDatabase): BudgetDao = db.budgetDao()
 
     @Provides
-    fun provideWalletAccountDao(db: ViNoteDatabase): WalletAccountDao = db.walletAccountDao()
+    fun provideSyncQueueDao(db: NoTaDatabase): SyncQueueDao = db.syncQueueDao()
 
     @Provides
-    fun provideBudgetDao(db: ViNoteDatabase): BudgetDao = db.budgetDao()
-
-    @Provides
-    fun provideSyncQueueDao(db: ViNoteDatabase): SyncQueueDao = db.syncQueueDao()
+    fun provideTransactionCategoryDao(db: NoTaDatabase): TransactionCategoryDao = db.transactionCategoryDao()
 }
 
 @Module
@@ -81,13 +87,6 @@ object ServiceModule {
 
     @Provides
     @Singleton
-    fun provideGoogleSignInManager(
-        @ApplicationContext context: Context,
-        firebaseAuth: FirebaseAuth
-    ): GoogleSignInManager = GoogleSignInManager(context, firebaseAuth)
-
-    @Provides
-    @Singleton
     fun provideTransactionService(
         transactionDao: TransactionDao,
         firestoreSyncRepository: FirestoreExpenseSyncRepository
@@ -95,9 +94,9 @@ object ServiceModule {
 
     @Provides
     @Singleton
-    fun provideViNoteAiService(
+    fun provideNoTaAiService(
         openRouterClient: OpenRouterClient
-    ): ViNoteAiService = ViNoteAiService(openRouterClient)
+    ): NoTaAiService = NoTaAiService(openRouterClient)
 
     @Provides
     @Singleton
@@ -109,7 +108,7 @@ object ServiceModule {
     fun provideWalletTransactionProcessor(
         transactionService: TransactionService,
         deduplicationService: WalletDeduplicationService,
-        aiService: ViNoteAiService
+        aiService: NoTaAiService
     ): WalletTransactionProcessor =
         WalletTransactionProcessor(transactionService, deduplicationService, aiService)
 }
@@ -127,8 +126,69 @@ object SupabaseModule {
 
 @Module
 @InstallIn(SingletonComponent::class)
-abstract class RepositoryModule {
+object GatewayModule {
+    @Provides
+    @Singleton
+    @IntoSet
+    fun provideMidtransGatewayService(supabaseClientProvider: SupabaseClientProvider): PaymentGatewayService {
+        return MidtransGatewayService(
+            supabaseEdgeFunctionUrl = supabaseClientProvider.supabaseFunctionsUrl,
+            supabaseAnonKey = supabaseClientProvider.supabaseAnonKey
+        )
+    }
 
+    @Provides
+    @Singleton
+    @IntoSet
+    fun provideUnofficialGoPayService(supabaseClientProvider: SupabaseClientProvider): PaymentGatewayService {
+        return UnofficialGoPayService(
+            supabaseEdgeFunctionUrl = supabaseClientProvider.supabaseFunctionsUrl,
+            supabaseAnonKey = supabaseClientProvider.supabaseAnonKey
+        )
+    }
+
+    @Provides
+    @Singleton
+    @IntoSet
+    fun provideUnofficialDanaService(supabaseClientProvider: SupabaseClientProvider): PaymentGatewayService {
+        return UnofficialDanaService(
+            supabaseEdgeFunctionUrl = supabaseClientProvider.supabaseFunctionsUrl,
+            supabaseAnonKey = supabaseClientProvider.supabaseAnonKey
+        )
+    }
+
+    @Provides
+    @Singleton
+    @IntoSet
+    fun provideUnofficialOvoService(supabaseClientProvider: SupabaseClientProvider): PaymentGatewayService {
+        return UnofficialOvoService(
+            supabaseEdgeFunctionUrl = supabaseClientProvider.supabaseFunctionsUrl,
+            supabaseAnonKey = supabaseClientProvider.supabaseAnonKey
+        )
+    }
+}
+
+@Module
+@InstallIn(SingletonComponent::class)
+object AiModule {
+    @Provides
+    @Singleton
+    fun provideOpenRouterClient(supabaseClientProvider: SupabaseClientProvider): OpenRouterClient {
+        // Use the Edge Function proxy for OpenRouter calls (no API key in APK)
+        return OpenRouterClient(
+            proxyUrl = "${supabaseClientProvider.supabaseFunctionsUrl}/openrouter-proxy"
+        ).also { client ->
+            // The client needs the Supabase anon key for auth (safe to expose)
+            // We don't need to set it here because the Edge Function uses the service role key.
+            // But the client might need it for future direct calls; we'll leave it unconfigured for now.
+            // client.configure(proxyUrl, supabaseClientProvider.supabaseAnonKey)
+        }
+    }
+}
+
+@Module
+@InstallIn(SingletonComponent::class)
+abstract class RepositoryModule {
     @Binds
     @Singleton
     abstract fun bindAuthRepository(impl: AuthRepositoryImpl): AuthRepository

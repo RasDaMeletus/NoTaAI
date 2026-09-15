@@ -22,6 +22,6 @@ dependencyResolutionManagement {
   }
 }
 
-rootProject.name = "ViNote"
+rootProject.name = "NoTa"
 
 include(":app")

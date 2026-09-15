@@ -24,6 +24,8 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.AccountBalance
@@ -34,6 +36,7 @@ import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.Security
 import androidx.compose.material.icons.filled.Sync
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.OutlinedTextField
@@ -53,13 +56,19 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.focus.FocusDirection
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.vinote.data.model.BankAccountItem
+import com.vinote.data.model.EwalletLinkingState
 import com.vinote.data.model.NotaEyeState
 import com.vinote.ui.components.FormatUtils
 import com.vinote.ui.components.NotaAvatar
@@ -93,6 +102,15 @@ fun BankIntegrationsScreen(
     val bankAccounts by viewModel.bankAccounts.collectAsState()
     val totalBankBalance by viewModel.totalBankBalance.collectAsState()
     val notaConfig by viewModel.notaConfig.collectAsState()
+
+    val linkingState by viewModel.ewalletLinkingState.collectAsState()
+    val focusManager = LocalFocusManager.current
+    var activeLinkingWalletId by remember { mutableStateOf<String?>(null) }
+    var activeLinkingWalletName by remember { mutableStateOf("") }
+    var inputPhoneNumber by remember { mutableStateOf("") }
+    var inputOtpCode by remember { mutableStateOf("") }
+    var showOtpDialog by remember { mutableStateOf(false) }
+    var activeLinkingReferenceId by remember { mutableStateOf("") }
 
     var selectedTab by remember { mutableStateOf(BankFilterTab.ALL) }
     var showAddAccountDialog by remember { mutableStateOf(false) }
@@ -380,7 +398,19 @@ fun BankIntegrationsScreen(
                                     modifier = Modifier
                                         .clip(RoundedCornerShape(50))
                                         .background(ViNoteSecondaryFixed)
-                                        .clickable { viewModel.toggleBankConnection(item.id) }
+                                        .clickable {
+                                            if (item.bankType == "E-Wallet") {
+                                                activeLinkingWalletId = item.id
+                                                activeLinkingWalletName = item.bankName
+                                                inputPhoneNumber = ""
+                                                inputOtpCode = ""
+                                                activeLinkingReferenceId = ""
+                                                viewModel.resetEwalletLinkingState()
+                                                showOtpDialog = true
+                                            } else {
+                                                viewModel.toggleBankConnection(item.id)
+                                            }
+                                        }
                                         .padding(horizontal = 12.dp, vertical = 6.dp)
                                         .testTag("bank_link_${item.id}_btn")
                                 ) {
@@ -562,6 +592,239 @@ fun BankIntegrationsScreen(
                 dismissButton = {
                     TextButton(onClick = { showAddAccountDialog = false }) {
                         Text("Cancel", color = ViNoteTextSecondary)
+                    }
+                }
+            )
+        }
+
+        // E-Wallet OTP Linking Dialog
+        if (showOtpDialog && activeLinkingWalletId != null) {
+            AlertDialog(
+                onDismissRequest = {
+                    showOtpDialog = false
+                    viewModel.resetEwalletLinkingState()
+                },
+                confirmButton = {},
+                title = {
+                    Text(
+                        text = "Link $activeLinkingWalletName",
+                        fontWeight = FontWeight.Bold,
+                        color = ViNoteTextPrimary
+                    )
+                },
+                text = {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(vertical = 8.dp),
+                        verticalArrangement = Arrangement.spacedBy(16.dp)
+                    ) {
+                        when (val state = linkingState) {
+                            is EwalletLinkingState.Idle -> {
+                                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                                    Text(
+                                        text = "Masukkan nomor telepon terdaftar di $activeLinkingWalletName untuk menerima OTP:",
+                                        fontSize = 13.sp,
+                                        color = ViNoteTextSecondary
+                                    )
+                                    OutlinedTextField(
+                                        value = inputPhoneNumber,
+                                        onValueChange = { inputPhoneNumber = it.filter { it.isDigit() } },
+                                        label = { Text("Nomor Telepon", color = ViNoteTextSecondary) },
+                                        singleLine = true,
+                                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Phone, imeAction = ImeAction.Next),
+                                        keyboardActions = KeyboardActions(onNext = { focusManager.moveFocus(FocusDirection.Down) }),
+                                        shape = RoundedCornerShape(12.dp),
+                                        colors = OutlinedTextFieldDefaults.colors(
+                                            focusedTextColor = ViNoteTextPrimary,
+                                            unfocusedTextColor = ViNoteTextPrimary,
+                                            focusedBorderColor = ViNotePrimary,
+                                            unfocusedBorderColor = Color(0xFFDDE3EA),
+                                            focusedContainerColor = ViNoteSurfaceContainerLowest,
+                                            unfocusedContainerColor = ViNoteSurfaceContainerLowest,
+                                            cursorColor = ViNotePrimary
+                                        ),
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .testTag("ewallet_otp_phone_field")
+                                    )
+                                    ViNoteButton(
+                                        text = "Kirim OTP",
+                                        onClick = {
+                                            if (inputPhoneNumber.length >= 10) {
+                                                viewModel.sendEwalletOtp(activeLinkingWalletId!!, inputPhoneNumber)
+                                            }
+                                        },
+                                        type = ViNoteButtonType.PRIMARY,
+                                        enabled = inputPhoneNumber.length >= 10,
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .testTag("ewallet_send_otp_btn")
+                                    )
+                                }
+                            }
+                            is EwalletLinkingState.SendingOtp -> {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.Center,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    CircularProgressIndicator(color = ViNotePrimary)
+                                    Spacer(modifier = Modifier.width(12.dp))
+                                    Text("Mengirim OTP...", color = ViNoteTextPrimary, fontSize = 13.sp)
+                                }
+                            }
+                            is EwalletLinkingState.AwaitingOtp -> {
+                                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.Center,
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Default.Check,
+                                            contentDescription = null,
+                                            tint = ViNoteMintSuccess,
+                                            modifier = Modifier.size(24.dp)
+                                        )
+                                    }
+                                    Text(
+                                        text = "OTP terkirim ke ${inputPhoneNumber.take(3)}****${inputPhoneNumber.takeLast(3)}",
+                                        fontSize = 13.sp,
+                                        color = ViNoteTextSecondary,
+                                        textAlign = TextAlign.Center
+                                    )
+                                    OutlinedTextField(
+                                        value = inputOtpCode,
+                                        onValueChange = { inputOtpCode = it.filter { it.isDigit() }.take(6) },
+                                        label = { Text("Kode OTP (6 digit)", color = ViNoteTextSecondary) },
+                                        singleLine = true,
+                                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number, imeAction = ImeAction.Done),
+                                        keyboardActions = KeyboardActions(onDone = {
+                                            if (inputOtpCode.length == 6) {
+                                                activeLinkingReferenceId = state.referenceId
+                                                viewModel.verifyEwalletOtp(activeLinkingWalletId!!, inputPhoneNumber, inputOtpCode, state.referenceId)
+                                            }
+                                        }),
+                                        shape = RoundedCornerShape(12.dp),
+                                        colors = OutlinedTextFieldDefaults.colors(
+                                            focusedTextColor = ViNoteTextPrimary,
+                                            unfocusedTextColor = ViNoteTextPrimary,
+                                            focusedBorderColor = ViNotePrimary,
+                                            unfocusedBorderColor = Color(0xFFDDE3EA),
+                                            focusedContainerColor = ViNoteSurfaceContainerLowest,
+                                            unfocusedContainerColor = ViNoteSurfaceContainerLowest,
+                                            cursorColor = ViNotePrimary
+                                        ),
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .testTag("ewallet_otp_code_field")
+                                    )
+                                    ViNoteButton(
+                                        text = "Verifikasi & Link",
+                                        onClick = {
+                                            if (inputOtpCode.length == 6) {
+                                                viewModel.verifyEwalletOtp(activeLinkingWalletId!!, inputPhoneNumber, inputOtpCode, state.referenceId)
+                                            }
+                                        },
+                                        type = ViNoteButtonType.PRIMARY,
+                                        enabled = inputOtpCode.length == 6,
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .testTag("ewallet_verify_otp_btn")
+                                    )
+                                }
+                            }
+                            is EwalletLinkingState.VerifyingOtp -> {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.Center,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    CircularProgressIndicator(color = ViNotePrimary)
+                                    Spacer(modifier = Modifier.width(12.dp))
+                                    Text("Memverifikasi OTP...", color = ViNoteTextPrimary, fontSize = 13.sp)
+                                }
+                            }
+                            is EwalletLinkingState.Success -> {
+                                Column(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalAlignment = Alignment.CenterHorizontally,
+                                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.Check,
+                                        contentDescription = null,
+                                        tint = ViNoteMintSuccess,
+                                        modifier = Modifier.size(48.dp)
+                                    )
+                                    Text(
+                                        text = "$activeLinkingWalletName berhasil ditautkan!",
+                                        fontSize = 16.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = ViNoteMintSuccess
+                                    )
+                                    Text(
+                                        text = "Saldo akan tersinkron otomatis.",
+                                        fontSize = 13.sp,
+                                        color = ViNoteTextSecondary
+                                    )
+                                    ViNoteButton(
+                                        text = "Tutup",
+                                        onClick = {
+                                            showOtpDialog = false
+                                            viewModel.resetEwalletLinkingState()
+                                        },
+                                        type = ViNoteButtonType.PRIMARY,
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .testTag("ewallet_linked_close_btn")
+                                    )
+                                }
+                            }
+                            is EwalletLinkingState.Error -> {
+                                Column(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalAlignment = Alignment.CenterHorizontally,
+                                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                                ) {
+                                    Text(
+                                        text = "Gagal menautkan $activeLinkingWalletName",
+                                        fontSize = 16.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = ViNoteError
+                                    )
+                                    Text(
+                                        text = state.message,
+                                        fontSize = 13.sp,
+                                        color = ViNoteTextSecondary,
+                                        textAlign = TextAlign.Center
+                                    )
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                    ) {
+                                        ViNoteButton(
+                                            text = "Coba Lagi",
+                                            onClick = {
+                                                viewModel.resetEwalletLinkingState()
+                                            },
+                                            type = ViNoteButtonType.SECONDARY,
+                                            modifier = Modifier.weight(1f)
+                                        )
+                                        ViNoteButton(
+                                            text = "Tutup",
+                                            onClick = {
+                                                showOtpDialog = false
+                                                viewModel.resetEwalletLinkingState()
+                                            },
+                                            type = ViNoteButtonType.PRIMARY,
+                                            modifier = Modifier.weight(1f)
+                                        )
+                                    }
+                                }
+                            }
+                        }
                     }
                 }
             )

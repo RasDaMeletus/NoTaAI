@@ -10,12 +10,14 @@ plugins {
   alias(libs.plugins.google.services)
 }
 
+layout.buildDirectory.set(layout.projectDirectory.dir("build_out"))
+
 android {
   namespace = "com.example"
   compileSdk { version = release(36) { minorApiLevel = 1 } }
 
   defaultConfig {
-    applicationId = "com.aistudio.vinote.kmzfpq"
+    applicationId = "com.nota.finance"
     minSdk = 24
     targetSdk = 36
     versionCode = 1

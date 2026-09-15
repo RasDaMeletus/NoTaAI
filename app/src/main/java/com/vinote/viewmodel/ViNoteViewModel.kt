@@ -15,7 +15,7 @@ import com.vinote.domain.model.AuthResult
 import com.vinote.data.engine.ExtractedReceiptData
 import com.vinote.data.engine.ExtractedVoiceEntity
 import com.vinote.data.engine.OfflineNlpEngine
-import com.vinote.data.local.ViNoteDatabase
+import com.vinote.data.local.NoTaDatabase
 import com.vinote.data.local.entities.DetectionEventEntity
 import com.vinote.data.local.entities.DetectionStatus
 import com.vinote.data.local.entities.WalletAccountEntity
@@ -35,18 +35,26 @@ import com.vinote.data.model.TransactionItem
 import com.vinote.data.model.TransactionSource
 import com.vinote.data.model.TransactionType
 import com.vinote.data.model.UserProfile
+import com.vinote.data.model.EwalletLinkingState
+import com.vinote.data.repository.WalletGatewayRepository
+import com.vinote.data.gateway.BalanceFetchResult
+import com.vinote.data.gateway.MidtransGatewayService
+import com.vinote.data.gateway.PaymentGatewayService
+import com.vinote.data.gateway.UnofficialDanaService
+import com.vinote.data.gateway.UnofficialGoPayService
+import com.vinote.data.gateway.UnofficialOvoService
 import com.vinote.data.repository.FirestoreExpenseSyncRepository
 import com.vinote.data.repository.FirestoreWalletBudgetSyncRepository
 import com.vinote.data.repository.SyncStatus
-import com.vinote.data.repository.ViNoteRepository
+import com.vinote.data.repository.NoTaRepository
 import com.vinote.data.sync.CloudSyncStatus
 import com.vinote.data.sync.SyncSummary
-import com.vinote.data.sync.ViNoteCloudSynchronizer
+import com.vinote.data.sync.NoTaCloudSynchronizer
 import com.vinote.domain.ai.AiAction
 import com.vinote.domain.ai.AiIntent
 import com.vinote.domain.ai.AiModelConfig
 import com.vinote.domain.ai.NoTaFinanceTools
-import com.vinote.domain.ai.ViNoteAiService
+import com.vinote.domain.ai.NoTaAiService
 import com.vinote.domain.export.TransactionExportService
 import com.vinote.domain.finance.FinancialAnalyticsService
 import com.vinote.domain.finance.FinancialHealthReport
@@ -57,6 +65,7 @@ import com.vinote.data.local.entities.RecurringTransactionEntity
 import com.vinote.data.local.entities.RecurringFrequency
 import com.vinote.data.local.entities.AchievementEntity
 import com.vinote.data.local.entities.MerchantEmbeddingEntity
+import com.vinote.data.local.entities.TransactionCategoryEntity
 import com.vinote.data.local.entities.SpendingPredictionEntity
 import com.vinote.domain.gamification.AchievementManager
 import com.vinote.domain.finance.SpendingPredictionEngine
@@ -100,9 +109,9 @@ enum class ActivityFilter {
 }
 
 class ViNoteViewModel(application: Application) : AndroidViewModel(application) {
-    private val database = ViNoteDatabase.getDatabase(application)
+    private val database = NoTaDatabase.getDatabase(application)
     private val firebaseAuth = FirebaseAuth.getInstance()
-    val authRepository: AuthRepository = AuthRepositoryImpl(firebaseAuth, SupabaseClientProvider(application))
+    val authRepository: AuthRepository = AuthRepositoryImpl(SupabaseClientProvider(application))
     private val firestoreSyncRepository = FirestoreExpenseSyncRepository()
 
     val firestoreWalletBudgetSyncRepository = FirestoreWalletBudgetSyncRepository(
@@ -111,7 +120,7 @@ class ViNoteViewModel(application: Application) : AndroidViewModel(application) 
         syncQueueDao = database.syncQueueDao()
     )
 
-    val cloudSynchronizer = ViNoteCloudSynchronizer(
+    val cloudSynchronizer = NoTaCloudSynchronizer(
         transactionDao = database.transactionDao(),
         goalDao = database.goalDao(),
         syncQueueDao = database.syncQueueDao(),
@@ -121,7 +130,7 @@ class ViNoteViewModel(application: Application) : AndroidViewModel(application) 
         scope = viewModelScope
     )
 
-    private val repository = ViNoteRepository(
+    private val repository = NoTaRepository(
         transactionDao = database.transactionDao(),
         goalDao = database.goalDao(),
         userSessionDao = database.userSessionDao(),
@@ -142,7 +151,7 @@ class ViNoteViewModel(application: Application) : AndroidViewModel(application) 
         notificationEngine = notificationEngine,
         externalScope = viewModelScope
     )
-    val aiService = ViNoteAiService()
+    val aiService = NoTaAiService()
     val deduplicationService = WalletDeduplicationService()
 
     val transactionDao = database.transactionDao()
@@ -563,13 +572,12 @@ class ViNoteViewModel(application: Application) : AndroidViewModel(application) 
     private val _isScanning = MutableStateFlow(false)
     val isScanning = _isScanning.asStateFlow()
 
-    private val _selectedReceiptPreset = MutableStateFlow("GrabFood Order")
-    val selectedReceiptPreset = _selectedReceiptPreset.asStateFlow()
-
-    private val _extractedReceiptData = MutableStateFlow<ExtractedReceiptData?>(
-        OfflineNlpEngine.parseReceiptTextLines(OfflineNlpEngine.sampleReceipts["GrabFood Order"] ?: emptyList())
-    )
+    private val _extractedReceiptData = MutableStateFlow<ExtractedReceiptData?>(null)
     val extractedReceiptData = _extractedReceiptData.asStateFlow()
+
+    // Custom categories (Income/Expense) from Room DB
+    private val _customCategories = MutableStateFlow<List<TransactionCategoryEntity>>(emptyList())
+    val customCategories = _customCategories.asStateFlow()
 
     // Notification banner state
     private val _bannerNotification = MutableStateFlow<String?>(null)
@@ -584,6 +592,16 @@ class ViNoteViewModel(application: Application) : AndroidViewModel(application) 
     val dailyLimit: Long get() = _userProfile.value.dailyBudgetLimit
 
     init {
+        // Wire OpenRouterClient with Supabase Edge Function Proxy URL
+        val supabaseProvider = SupabaseClientProvider(application)
+        if (supabaseProvider.isConfigured) {
+            val proxyUrl = supabaseProvider.supabaseFunctionsUrl + "/openrouter-proxy"
+            aiService.openRouterClient.configure(
+                proxyBaseUrl = proxyUrl,
+                anon = supabaseProvider.supabaseAnonKey
+            )
+        }
+
         // Wire notification listener coordinator
         WalletNotificationListenerService.coordinator = detectionCoordinator
         WalletNotificationListenerService.activeUserId = activeUserId
@@ -656,6 +674,13 @@ class ViNoteViewModel(application: Application) : AndroidViewModel(application) 
                 }
             }
         }
+
+        // Observe custom categories from Room DB
+        viewModelScope.launch {
+            database.transactionCategoryDao().getAllCategories().collect { cats ->
+                _customCategories.value = cats
+            }
+        }
     }
 
     fun learnMerchantCategory(merchantName: String, category: String) {
@@ -677,6 +702,7 @@ class ViNoteViewModel(application: Application) : AndroidViewModel(application) 
             }
         }
     }
+
 
     fun exportTransactionsToPdf(context: android.content.Context) {
         viewModelScope.launch(Dispatchers.IO) {
@@ -786,8 +812,8 @@ class ViNoteViewModel(application: Application) : AndroidViewModel(application) 
                     amount = 50000L,
                     category = "Transport",
                     type = TransactionType.EXPENSE,
-                    walletName = "ShopeePay",
-                    colorHex = "#EE4D2D",
+                    walletName = "GoPay",
+                    colorHex = "#00AED6",
                     iconName = "DirectionsCar",
                     usageCount = 3
                 ),
@@ -1010,6 +1036,24 @@ class ViNoteViewModel(application: Application) : AndroidViewModel(application) 
         _keypadAmount.value = "0"
     }
 
+    fun addCustomCategory(name: String, type: TransactionType) {
+        viewModelScope.launch(Dispatchers.IO) {
+            val newCategory = TransactionCategoryEntity(
+                userId = activeUserId,
+                name = name,
+                type = type,
+                isCustom = true
+            )
+            database.transactionCategoryDao().insertCategory(newCategory)
+        }
+    }
+
+    fun deleteCustomCategory(categoryId: Long) {
+        viewModelScope.launch(Dispatchers.IO) {
+            database.transactionCategoryDao().deleteCategory(categoryId)
+        }
+    }
+
     fun preparePendingTransactionFromKeypad(
             category: String = "Food",
             title: String = "Expense",
@@ -1055,19 +1099,14 @@ class ViNoteViewModel(application: Application) : AndroidViewModel(application) 
         onError: (String) -> Unit = {}
     ) {
         viewModelScope.launch {
-            val result = authRepository.signInWithGoogle(context)
-            when (result) {
-                is AuthResult.Success -> {
-                    showBanner("Signed in ✨")
-                    onSuccess()
-                }
-                is AuthResult.Error -> {
-                    val err = result.message
-                    showBanner("Sign-in note: Using secure local identity")
-                    // Gracefully fallback to standard guest identity
-                    authRepository.loginWithDirectProfile("user@vinote.local", "NoTa User")
-                    onSuccess()
-                }
+            val result = authRepository.signInWithSupabaseGoogle()
+            if (result.isSuccess) {
+                showBanner("Signed in ✨")
+                onSuccess()
+            } else {
+                showBanner("Sign-in note: Using secure local identity")
+                authRepository.loginWithDirectProfile("user@vinote.local", "NoTa User")
+                onSuccess()
             }
         }
     }
@@ -1173,8 +1212,164 @@ class ViNoteViewModel(application: Application) : AndroidViewModel(application) 
         showBanner("Profile & Budget settings updated! 💾")
     }
 
-    // Bank Integrations Methods
-    fun toggleBankConnection(bankId: String) {
+    // E-Wallet OTP Linking State
+    private val _ewalletLinkingState = MutableStateFlow<EwalletLinkingState>(EwalletLinkingState.Idle)
+    val ewalletLinkingState: StateFlow<EwalletLinkingState> = _ewalletLinkingState.asStateFlow()
+
+    private val supabaseProvider = SupabaseClientProvider(application)
+
+    private val walletGatewayRepository = WalletGatewayRepository(
+        midtransGatewayService = MidtransGatewayService(
+            supabaseEdgeFunctionUrl = SupabaseClientProvider(application).supabaseFunctionsUrl,
+            supabaseAnonKey = SupabaseClientProvider(application).supabaseAnonKey
+        ),
+        unofficialGoPayService = UnofficialGoPayService(
+            supabaseEdgeFunctionUrl = SupabaseClientProvider(application).supabaseFunctionsUrl,
+            supabaseAnonKey = SupabaseClientProvider(application).supabaseAnonKey
+        ),
+        unofficialOvoService = UnofficialOvoService(
+            supabaseEdgeFunctionUrl = SupabaseClientProvider(application).supabaseFunctionsUrl,
+            supabaseAnonKey = SupabaseClientProvider(application).supabaseAnonKey
+        ),
+        unofficialDanaService = UnofficialDanaService(
+            supabaseEdgeFunctionUrl = SupabaseClientProvider(application).supabaseFunctionsUrl,
+            supabaseAnonKey = SupabaseClientProvider(application).supabaseAnonKey
+        ),
+        walletAccountDao = database.walletAccountDao(),
+        supabaseClientProvider = SupabaseClientProvider(application)
+    )
+
+    fun sendEwalletOtp(walletId: String, phoneNumber: String) {
+        val wallet = walletAccounts.value.find { it.id == walletId }
+        val provider = when (wallet?.name?.lowercase()) {
+            "gopay" -> PaymentGatewayService.Provider.GOPAY
+            "ovo" -> PaymentGatewayService.Provider.OVO
+            "dana" -> PaymentGatewayService.Provider.DANA
+            else -> return
+        }
+
+        viewModelScope.launch {
+            _ewalletLinkingState.value = EwalletLinkingState.SendingOtp(phoneNumber, provider.displayName)
+            try {
+                val result = walletGatewayRepository.linkWalletAccount(provider, phoneNumber)
+                when (result) {
+                    is BalanceFetchResult.LinkingRequired -> {
+                        _ewalletLinkingState.value = EwalletLinkingState.AwaitingOtp(
+                            phoneNumber = phoneNumber,
+                            provider = provider.displayName,
+                            referenceId = result.provider
+                        )
+                        showBanner("OTP sent to $phoneNumber ✓")
+                    }
+                    is BalanceFetchResult.Error -> {
+                        _ewalletLinkingState.value = EwalletLinkingState.Error(result.message)
+                        showBanner("Failed to send OTP: ${result.message}")
+                    }
+                    else -> {
+                        _ewalletLinkingState.value = EwalletLinkingState.Error("Unexpected response")
+                    }
+                }
+            } catch (e: Exception) {
+                _ewalletLinkingState.value = EwalletLinkingState.Error(e.message ?: "Connection failed")
+                showBanner("Network error: ${e.message}")
+            }
+        }
+    }
+
+    fun verifyEwalletOtp(walletId: String, phoneNumber: String, otp: String, referenceId: String) {
+        val wallet = walletAccounts.value.find { it.id == walletId }
+        val provider = when (wallet?.name?.lowercase()) {
+            "gopay" -> PaymentGatewayService.Provider.GOPAY
+            "ovo" -> PaymentGatewayService.Provider.OVO
+            "dana" -> PaymentGatewayService.Provider.DANA
+            else -> return
+        }
+
+        viewModelScope.launch {
+                    _ewalletLinkingState.value = EwalletLinkingState.VerifyingOtp(phoneNumber, provider.displayName)
+                    try {
+                        val app = getApplication<Application>()
+                        val edgeUrl = SupabaseClientProvider(app).supabaseFunctionsUrl
+                        val anonKey = SupabaseClientProvider(app).supabaseAnonKey
+                        val result = when (provider) {
+                            PaymentGatewayService.Provider.GOPAY -> {
+                                val goPayService = UnofficialGoPayService(edgeUrl, anonKey)
+                                goPayService.verifyOtp(phoneNumber, otp, referenceId)
+                                    .map { BalanceFetchResult.Success(0L, provider.displayName, phoneNumber, accountId = phoneNumber) }
+                                    .getOrElse { BalanceFetchResult.Error(it.message ?: "GoPay verify failed") }
+                            }
+                            PaymentGatewayService.Provider.OVO -> {
+                                val ovoService = UnofficialOvoService(edgeUrl, anonKey)
+                                ovoService.verifyOtp(phoneNumber, otp, referenceId)
+                                    .map { BalanceFetchResult.Success(0L, provider.displayName, phoneNumber, accountId = phoneNumber) }
+                                    .getOrElse { BalanceFetchResult.Error(it.message ?: "OVO verify failed") }
+                            }
+                            PaymentGatewayService.Provider.DANA -> {
+                                // DANA uses WebView linking, not OTP
+                                BalanceFetchResult.Success(0L, provider.displayName, phoneNumber, accountId = phoneNumber)
+                            }
+                            else -> BalanceFetchResult.Error("Verification not supported")
+                        }
+
+                when (result) {
+                    is BalanceFetchResult.Success -> {
+                        val updated = wallet?.copy(
+                            isConnected = true,
+                            gatewayAccessToken = result.provider,
+                            linkedAccountId = phoneNumber,
+                            gatewayType = provider.displayName,
+                            lastSyncTimestamp = System.currentTimeMillis()
+                        )
+                        if (updated != null) {
+                            repository.updateWallet(updated)
+                        }
+                        _ewalletLinkingState.value = EwalletLinkingState.Success(provider.displayName, phoneNumber)
+                        showBanner("${provider.displayName} connected successfully! 🎉")
+                    }
+                    is BalanceFetchResult.Error -> {
+                        _ewalletLinkingState.value = EwalletLinkingState.Error(result.message)
+                        showBanner("OTP verification failed: ${result.message}")
+                    }
+                    else -> {
+                        _ewalletLinkingState.value = EwalletLinkingState.Error("Unexpected verification response")
+                    }
+                }
+            } catch (e: Exception) {
+                _ewalletLinkingState.value = EwalletLinkingState.Error(e.message ?: "Verification failed")
+                showBanner("Verification error: ${e.message}")
+            }
+        }
+    }
+
+    fun resetEwalletLinkingState() {
+        _ewalletLinkingState.value = EwalletLinkingState.Idle
+    }
+
+    fun fetchEwalletBalance(walletId: String) {
+        val wallet = walletAccounts.value.find { it.id == walletId } ?: return
+        viewModelScope.launch {
+            val result = walletGatewayRepository.fetchWalletBalance(wallet)
+            when (result) {
+                is BalanceFetchResult.Success -> {
+                    val updated = wallet.copy(
+                        providerReportedBalance = result.balance,
+                        lastSyncTimestamp = System.currentTimeMillis()
+                    )
+                    repository.updateWallet(updated)
+                    showBanner("${wallet.name} balance updated: ${FormatUtils.formatRupiah(result.balance)}")
+                }
+                is BalanceFetchResult.Error -> {
+                    showBanner("Failed to fetch ${wallet.name} balance: ${result.message}")
+                }
+                else -> {
+                    showBanner("Balance check requires re-authentication")
+                }
+            }
+        }
+    }
+
+        // Bank Integrations Methods
+        fun toggleBankConnection(bankId: String) {
         viewModelScope.launch {
             val wallet = walletAccounts.value.find { it.id == bankId }
             if (wallet != null) {
@@ -1467,14 +1662,26 @@ class ViNoteViewModel(application: Application) : AndroidViewModel(application) 
     }
 
     fun startRealSpeechRecording() {
+        if (_isVoiceListening.value) return
         _isVoiceListening.value = true
-        // Process the stream asynchronously
-        viewModelScope.launch {
-            val parsed = hybridAiProcessor.recognizeSpeech()
-            _voiceTranscript.value = parsed.title
-            _parsedVoiceEntity.value = parsed
-            _isVoiceListening.value = false
-        }
+        _voiceTranscript.value = ""
+
+        speechRecorderService.startListening(
+            onResult = { text ->
+                _voiceTranscript.value = text
+                _isVoiceListening.value = false
+                viewModelScope.launch {
+                    val parsed = hybridAiProcessor.parseVoiceText(text)
+                    _parsedVoiceEntity.value = parsed
+                }
+            },
+            onPartialResult = { partial ->
+                _voiceTranscript.value = partial
+            },
+            onErrorCallback = { err ->
+                _isVoiceListening.value = false
+            }
+        )
     }
 
     fun stopRealSpeechRecording() {
@@ -1529,45 +1736,46 @@ class ViNoteViewModel(application: Application) : AndroidViewModel(application) 
         }
     }
 
-    // Hybrid Receipt Scan & OCR Processing (Hugging Face Online Vision + On-Device Engine)
-    fun selectReceiptPreset(presetName: String) {
-        _selectedReceiptPreset.value = presetName
-    }
-
-    fun processCapturedReceiptBitmap(bitmap: Bitmap, onComplete: () -> Unit = {}) {
+    // Hybrid Receipt Scan & OCR Processing
+    fun startReceiptScanning(onComplete: () -> Unit) {
         viewModelScope.launch {
             _isScanning.value = true
-            val parsedData = withContext(Dispatchers.Default) {
-                hybridAiProcessor.processReceipt(bitmap)
-            }
-
-            _extractedReceiptData.value = parsedData
             _isScanning.value = false
-
-            _pendingTransaction.value = TransactionItem(
-                userId = activeUserId,
-                title = parsedData.merchant,
-                amount = parsedData.totalAmount,
-                category = parsedData.category,
-                type = TransactionType.EXPENSE,
-                merchant = parsedData.merchant,
-                source = TransactionSource.SCAN,
-                timeLabel = "Just now"
-            )
-            val engineBadge = if (parsedData.isOfflineEngine) "On-Device Engine" else "Hugging Face AI"
-            showBanner("Receipt ($engineBadge): ${FormatUtils.formatRupiah(parsedData.totalAmount)} from ${parsedData.merchant}")
             onComplete()
         }
     }
 
-    fun startReceiptScanning(receiptName: String? = null, onComplete: () -> Unit) {
+    // Process a captured bitmap from camera
+    fun processCapturedReceiptBitmap(bitmap: Bitmap, onComplete: () -> Unit = {}) {
         viewModelScope.launch {
             _isScanning.value = true
-            _extractedReceiptData.value = null
-            _pendingTransaction.value = null
-            showBanner("Camera unavailable. Please grant camera permission and try again.")
-            _isScanning.value = false
-            onComplete()
+            try {
+                val parsedData = withContext(Dispatchers.Default) {
+                    hybridAiProcessor.processReceipt(bitmap)
+                }
+
+                _extractedReceiptData.value = parsedData
+                _isScanning.value = false
+
+                _pendingTransaction.value = TransactionItem(
+                    userId = activeUserId,
+                    title = parsedData.merchant,
+                    amount = parsedData.totalAmount,
+                    category = parsedData.category,
+                    type = TransactionType.EXPENSE,
+                    merchant = parsedData.merchant,
+                    source = TransactionSource.SCAN,
+                    timeLabel = "Just now"
+                )
+                val engineBadge = if (parsedData.isOfflineEngine) "On-Device Engine" else "AI"
+                showBanner("Receipt ($engineBadge): ${FormatUtils.formatRupiah(parsedData.totalAmount)} from ${parsedData.merchant}")
+                onComplete()
+            } catch (e: Exception) {
+                _isScanning.value = false
+                _extractedReceiptData.value = null
+                showBanner("OCR failed: ${e.message}")
+                onComplete()
+            }
         }
     }
 

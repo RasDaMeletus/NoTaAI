@@ -1,0 +1,761 @@
+/**
+ * Supabase Edge Function: gateway-proxy
+ *
+ * Server-side proxy for payment gateway balance inquiries.
+ * Handles official Midtrans API and unofficial GoPay/DANA/OVO APIs.
+ *
+ * Deploy: supabase functions deploy gateway-proxy
+ * Secrets: supabase secrets set MIDTRANS_SERVER_KEY=MIDTRANS_CLIENT_KEY=...
+ *
+ * ⚠️ Unofficial APIs (GoPay/DANA/OVO) use reverse-engineered endpoints.
+ * They may break without notice. Use at your own risk.
+ */
+
+import { serve } from "https://deno.land/std@0.177.0/http/server.ts";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+
+// ──────────────────────────────────────────────────────────────
+// GoPay Unofficial API (from akmaldira/unofficial-gojek-api)
+// ──────────────────────────────────────────────────────────────
+
+const GOJEK_BASE = "https://goid.gojekapi.com";
+const GOJEK_CUSTOMER = "https://customer.gopayapi.com";
+
+const GOJEK_HEADERS: Record<string, string> = {
+  "Content-Type": "application/json",
+  "User-Agent": "okhttp/4.10.0",
+  "X-Platform": "Android",
+  "X-Uniqueid": "c6ad2e615cf54aa5",
+  "X-Appversion": "4.74.3",
+  "X-Appid": "com.gojek.app",
+  "X-User-Type": "customer",
+  "X-Deviceos": "Android,9",
+  "X-Phonemake": "samsung",
+  "X-Phonemodel": "samsung,SM-S901N",
+  "Gojek-Country-Code": "ID",
+};
+
+const GOJEK_CLIENT_ID = "gojek:consumer:app";
+const GOJEK_CLIENT_SECRET = "pGwQ7oi8bKqqwvid09UrjqpkMEHklb";
+const GOJEK_MFA_CLIENT_ID = "6d11d261d7ae462dbd4be0dc5f36a697-MFAGOJEK";
+
+// ──────────────────────────────────────────────────────────────
+// OVO Unofficial API (from namtxs/ovoid-API)
+// ──────────────────────────────────────────────────────────────
+
+const OVO_BASE = "https://api.ovo.id";
+
+const OVO_HEADERS: Record<string, string> = {
+  "Content-Type": "application/json",
+  "User-Agent": "OVO-Android/3.54.0",
+  "X-Platform": "Android",
+  "X-DeviceOS": "Android,11",
+};
+
+// ──────────────────────────────────────────────────────────────
+// DANA Official Widget API (from dana-id/dana-node)
+// ──────────────────────────────────────────────────────────────
+
+const DANA_BASE = "https://api.sandbox.dana.id";
+const DANA_PROD_BASE = "https://api.saas.dana.id";
+
+// ──────────────────────────────────────────────────────────────
+// Helper: HMAC-SHA256 for Midtrans signature
+// ──────────────────────────────────────────────────────────────
+
+async function hmacSha256(key: string, message: string): Promise<string> {
+  const encoder = new TextEncoder();
+  const keyData = encoder.encode(key);
+  const msgData = encoder.encode(message);
+  const cryptoKey = await crypto.subtle.importKey(
+    "raw",
+    keyData,
+    { name: "HMAC", hash: "SHA-256" },
+    false,
+    ["sign"]
+  );
+  const signature = await crypto.subtle.sign("HMAC", cryptoKey, msgData);
+  return Array.from(new Uint8Array(signature))
+    .map((b) => b.toString(16).padStart(2, "0"))
+    .join("");
+}
+
+// ──────────────────────────────────────────────────────────────
+// MIDTRANS: Balance Inquiry (Official)
+// ──────────────────────────────────────────────────────────────
+
+async function midtransBalanceInquiry(
+  accountId: string,
+  provider: string
+): Promise<Response> {
+  const serverKey = Deno.env.get("MIDTRANS_SERVER_KEY") || "";
+  const isProduction = Deno.env.get("MIDTRANS_IS_PRODUCTION") === "true";
+  const baseUrl = isProduction
+    ? "https://api.midtrans.com"
+    : "https://api.sandbox.midtrans.com";
+
+  const timestamp = new Date().toISOString();
+  const orderId = `NOTA-${Date.now()}`;
+
+  // Map provider to Midtrans payment method
+  const paymentMethods: Record<string, string> = {
+    GOPAY: "gopay",
+    OVO: "ovo",
+    DANA: "dana",
+  };
+
+  const paymentMethod = paymentMethods[provider] || provider.toLowerCase();
+
+  // For Midtrans, we need the user's access token from the frontend
+  // The flow: user logs into e-wallet → gets token → sends to this proxy
+  // Then we call Midtrans BI-SNAP API
+
+  // Step 1: Create charge request for balance inquiry
+  const chargeBody = {
+    payment_type: paymentMethod,
+    transaction_details: {
+      order_id: orderId,
+      gross_amount: 1, // Minimal amount for inquiry
+    },
+    [paymentMethod]: {
+      account_id: accountId,
+    },
+  };
+
+  const signatureString = `${orderId}${timestamp}1${serverKey}`;
+  const signature = await hmacSha256(serverKey, signatureString);
+
+  const headers: Record<string, string> = {
+    "Content-Type": "application/json",
+    Authorization: `Basic ${btoa(serverKey + ":")}`,
+    "X-Redirect-Url": "https://nota.finance/callback",
+  };
+
+  try {
+    const resp = await fetch(`${baseUrl}/v2/charge`, {
+      method: "POST",
+      headers,
+      body: JSON.stringify({
+        ...chargeBody,
+        callbacks: {
+          finish: "https://nota.finance/callback",
+        },
+      }),
+    });
+
+    const data = await resp.json();
+
+    if (data.status_code === "200" || data.status_code === "201") {
+      // Extract balance from the response
+      const balanceInfo =
+        data.gopay?.account_details ||
+        data.ovo?.account_details ||
+        data.dana?.account_details;
+
+      if (balanceInfo) {
+        return new Response(
+          JSON.stringify({
+            success: true,
+            balance: balanceInfo.balance || balanceInfo.amount || 0,
+            currency: "IDR",
+            provider: provider,
+            orderId: orderId,
+          }),
+          { headers: { "Content-Type": "application/json" } }
+        );
+      }
+
+      return new Response(
+        JSON.stringify({
+          success: false,
+          message: `Charge created but balance not in response. Status: ${data.status_message}`,
+          orderId: orderId,
+          raw: data,
+        }),
+        { headers: { "Content-Type": "application/json" } }
+      );
+    }
+
+    return new Response(
+      JSON.stringify({
+        success: false,
+        message: data.status_message || "Midtrans charge failed",
+        code: data.status_code,
+      }),
+      { status: 400, headers: { "Content-Type": "application/json" } }
+    );
+  } catch (err) {
+    return new Response(
+      JSON.stringify({ success: false, message: err.message }),
+      { status: 500, headers: { "Content-Type": "application/json" } }
+    );
+  }
+}
+
+// ──────────────────────────────────────────────────────────────
+// GOPAY Unofficial: Login + OTP + Balance
+// ──────────────────────────────────────────────────────────────
+
+async function gopayLoginRequest(phone: string): Promise<Response> {
+  try {
+    const resp = await fetch(`${GOJEK_BASE}/goid/login/request`, {
+      method: "POST",
+      headers: GOJEK_HEADERS,
+      body: JSON.stringify({
+        client_id: GOJEK_CLIENT_ID,
+        client_secret: GOJEK_CLIENT_SECRET,
+        country_code: "+62",
+        login_type: "",
+        magic_link_ref: "",
+        phone_number: phone,
+      }),
+    });
+
+    const data = await resp.json();
+
+    if (data.success) {
+      return new Response(
+        JSON.stringify({
+          success: true,
+          otpToken: data.data.otp_token,
+          message: `OTP sent to ${phone}`,
+        }),
+        { headers: { "Content-Type": "application/json" } }
+      );
+    }
+
+    return new Response(
+      JSON.stringify({
+        success: false,
+        message: data.errors?.[0]?.message || "Failed to send OTP",
+      }),
+      { status: 400, headers: { "Content-Type": "application/json" } }
+    );
+  } catch (err) {
+    return new Response(
+      JSON.stringify({ success: false, message: err.message }),
+      { status: 500, headers: { "Content-Type": "application/json" } }
+    );
+  }
+}
+
+async function gopayVerifyOtp(
+  otp: string,
+  otpToken: string
+): Promise<Response> {
+  try {
+    const resp = await fetch(`${GOJEK_BASE}/goid/token`, {
+      method: "POST",
+      headers: GOJEK_HEADERS,
+      body: JSON.stringify({
+        client_id: GOJEK_CLIENT_ID,
+        client_secret: GOJEK_CLIENT_SECRET,
+        data: { otp: otp, otp_token: otpToken },
+        grant_type: "otp",
+        scopes: [],
+      }),
+    });
+
+    const data = await resp.json();
+
+    if (data.access_token) {
+      return new Response(
+        JSON.stringify({
+          success: true,
+          accessToken: data.access_token,
+          refreshToken: data.refresh_token,
+        }),
+        { headers: { "Content-Type": "application/json" } }
+      );
+    }
+
+    // Check if MFA is required
+    if (
+      data.errors?.[0]?.code ===
+      "mfa:customer_send_challenge:challenge_required"
+    ) {
+      return new Response(
+        JSON.stringify({
+          success: false,
+          requiresMFA: true,
+          challengeId: data.errors[0].details.challenges[0].gopay_challenge_id,
+          challengeToken: data.errors[0].details.challenge_token,
+          message: "GoPay PIN required for verification",
+        }),
+        { status: 400, headers: { "Content-Type": "application/json" } }
+      );
+    }
+
+    return new Response(
+      JSON.stringify({
+        success: false,
+        message: data.errors?.[0]?.message || "OTP verification failed",
+      }),
+      { status: 400, headers: { "Content-Type": "application/json" } }
+    );
+  } catch (err) {
+    return new Response(
+      JSON.stringify({ success: false, message: err.message }),
+      { status: 500, headers: { "Content-Type": "application/json" } }
+    );
+  }
+}
+
+async function gopayVerifyMfa(
+  challengeId: string,
+  pin: string,
+  challengeToken: string
+): Promise<Response> {
+  try {
+    // Step 1: Verify PIN
+    const pinResp = await fetch(`${GOJEK_CUSTOMER}/api/v1/users/pin/tokens`, {
+      method: "POST",
+      headers: GOJEK_HEADERS,
+      body: JSON.stringify({
+        challenge_id: challengeId,
+        client_id: GOJEK_MFA_CLIENT_ID,
+        pin: pin,
+      }),
+    });
+
+    const pinData = await pinResp.json();
+
+    if (!pinData.success) {
+      return new Response(
+        JSON.stringify({
+          success: false,
+          message: pinData.errors?.[0]?.message || "PIN verification failed",
+        }),
+        { status: 400, headers: { "Content-Type": "application/json" } }
+      );
+    }
+
+    // Step 2: Get access token with MFA token
+    const tokenResp = await fetch(`${GOJEK_BASE}/goid/token`, {
+      method: "POST",
+      headers: GOJEK_HEADERS,
+      body: JSON.stringify({
+        client_id: GOJEK_CLIENT_ID,
+        client_secret: GOJEK_CLIENT_SECRET,
+        data: {
+          gopay_challenge_id: challengeId,
+          gopay_jwt_value: pinData.data.token,
+        },
+        grant_type: "gopay_pin",
+        scopes: [],
+      }),
+    });
+
+    const tokenData = await tokenResp.json();
+
+    if (tokenData.access_token) {
+      return new Response(
+        JSON.stringify({
+          success: true,
+          accessToken: tokenData.access_token,
+          refreshToken: tokenData.refresh_token,
+        }),
+        { headers: { "Content-Type": "application/json" } }
+      );
+    }
+
+    return new Response(
+      JSON.stringify({
+        success: false,
+        message: tokenData.errors?.[0]?.message || "MFA token failed",
+      }),
+      { status: 400, headers: { "Content-Type": "application/json" } }
+    );
+  } catch (err) {
+    return new Response(
+      JSON.stringify({ success: false, message: err.message }),
+      { status: 500, headers: { "Content-Type": "application/json" } }
+    );
+  }
+}
+
+async function gopayGetBalance(accessToken: string): Promise<Response> {
+  try {
+    const resp = await fetch(
+      `${GOJEK_CUSTOMER}/v1/payment-options/balances`,
+      {
+        method: "GET",
+        headers: {
+          ...GOJEK_HEADERS,
+          Authorization: `Bearer ${accessToken}`,
+        },
+      }
+    );
+
+    const data = await resp.json();
+
+    if (data.data) {
+      // data.data is an array of balance items
+      const gopayBalance = data.data.find(
+        (item: any) => item.type === "GOPAY" || item.type === "gopay"
+      );
+      const coinBalance = data.data.find(
+        (item: any) => item.type === "GOPLUS" || item.type === "coin"
+      );
+
+      const balance = gopayBalance?.balance?.value || 0;
+
+      return new Response(
+        JSON.stringify({
+          success: true,
+          balance: balance,
+          currency: gopayBalance?.balance?.currency || "IDR",
+          provider: "GoPay",
+          allBalances: data.data,
+        }),
+        { headers: { "Content-Type": "application/json" } }
+      );
+    }
+
+    return new Response(
+      JSON.stringify({
+        success: false,
+        message: "No balance data returned",
+        raw: data,
+      }),
+      { status: 400, headers: { "Content-Type": "application/json" } }
+    );
+  } catch (err) {
+    return new Response(
+      JSON.stringify({ success: false, message: err.message }),
+      { status: 500, headers: { "Content-Type": "application/json" } }
+    );
+  }
+}
+
+// ──────────────────────────────────────────────────────────────
+// OVO Unofficial: OTP + Balance
+// ──────────────────────────────────────────────────────────────
+
+async function ovoSendOtp(phone: string): Promise<Response> {
+  try {
+    const resp = await fetch(`${OVO_BASE}/v2/auth/customer/otp`, {
+      method: "POST",
+      headers: OVO_HEADERS,
+      body: JSON.stringify({
+        mobileNumber: phone,
+        channel: "SMS",
+      }),
+    });
+
+    const data = await resp.json();
+
+    if (data.status === 1020 || data.status === 1000) {
+      return new Response(
+        JSON.stringify({
+          success: true,
+          referenceNo: data.data?.referenceNo,
+          message: `OTP sent to ${phone}`,
+        }),
+        { headers: { "Content-Type": "application/json" } }
+      );
+    }
+
+    return new Response(
+      JSON.stringify({
+        success: false,
+        message: data.message || "Failed to send OTP",
+      }),
+      { status: 400, headers: { "Content-Type": "application/json" } }
+    );
+  } catch (err) {
+    return new Response(
+      JSON.stringify({ success: false, message: err.message }),
+      { status: 500, headers: { "Content-Type": "application/json" } }
+    );
+  }
+}
+
+async function ovoVerifyOtp(
+  phone: string,
+  otp: string,
+  referenceNo: string
+): Promise<Response> {
+  try {
+    const resp = await fetch(`${OVO_BASE}/v2/auth/customer/otp`, {
+      method: "POST",
+      headers: OVO_HEADERS,
+      body: JSON.stringify({
+        mobileNumber: phone,
+        otpCode: otp,
+        referenceNo: referenceNo,
+      }),
+    });
+
+    const data = await resp.json();
+
+    if (data.status === 1000 && data.data?.accessToken) {
+      return new Response(
+        JSON.stringify({
+          success: true,
+          accessToken: data.data.accessToken,
+          refreshToken: data.data.refreshToken,
+          deviceId: data.data.deviceId,
+        }),
+        { headers: { "Content-Type": "application/json" } }
+      );
+    }
+
+    return new Response(
+      JSON.stringify({
+        success: false,
+        message: data.message || "OTP verification failed",
+      }),
+      { status: 400, headers: { "Content-Type": "application/json" } }
+    );
+  } catch (err) {
+    return new Response(
+      JSON.stringify({ success: false, message: err.message }),
+      { status: 500, headers: { "Content-Type": "application/json" } }
+    );
+  }
+}
+
+async function ovoGetBalance(
+  accessToken: string,
+  deviceId: string
+): Promise<Response> {
+  try {
+    const resp = await fetch(`${OVO_BASE}/v3/customer/detail`, {
+      method: "POST",
+      headers: {
+        ...OVO_HEADERS,
+        Authorization: `Bearer ${accessToken}`,
+        "X-Device-Id": deviceId,
+      },
+      body: JSON.stringify({}),
+    });
+
+    const data = await resp.json();
+
+    if (data.status === 1000 && data.data) {
+      const balance =
+        data.data.ovoCash || data.data.balance || data.data.walletBalance || 0;
+
+      return new Response(
+        JSON.stringify({
+          success: true,
+          balance: balance,
+          currency: "IDR",
+          provider: "OVO",
+          ovoPoints: data.data.ovoPoint || 0,
+        }),
+        { headers: { "Content-Type": "application/json" } }
+      );
+    }
+
+    // Fallback: try walletInquiry
+    const walletResp = await fetch(`${OVO_BASE}/v3/card/wallet/inquiry`, {
+      method: "POST",
+      headers: {
+        ...OVO_HEADERS,
+        Authorization: `Bearer ${accessToken}`,
+        "X-Device-Id": deviceId,
+      },
+      body: JSON.stringify({}),
+    });
+
+    const walletData = await walletResp.json();
+
+    if (walletData.status === 1000 && walletData.data) {
+      return new Response(
+        JSON.stringify({
+          success: true,
+          balance: walletData.data.ovoCash || 0,
+          currency: "IDR",
+          provider: "OVO",
+          ovoPoints: walletData.data.ovoPoint || 0,
+        }),
+        { headers: { "Content-Type": "application/json" } }
+      );
+    }
+
+    return new Response(
+      JSON.stringify({
+        success: false,
+        message: data.message || "Failed to get balance",
+      }),
+      { status: 400, headers: { "Content-Type": "application/json" } }
+    );
+  } catch (err) {
+    return new Response(
+      JSON.stringify({ success: false, message: err.message }),
+      { status: 500, headers: { "Content-Type": "application/json" } }
+    );
+  }
+}
+
+// ──────────────────────────────────────────────────────────────
+// DANA Official Widget API: Balance Inquiry
+// ──────────────────────────────────────────────────────────────
+
+async function danaBalanceInquiry(
+  accessToken: string
+): Promise<Response> {
+  const partnerId = Deno.env.get("DANA_PARTNER_ID") || "";
+  const privateKey = Deno.env.get("DANA_PRIVATE_KEY") || "";
+  const isProduction = Deno.env.get("DANA_IS_PRODUCTION") === "true";
+  const baseUrl = isProduction ? DANA_PROD_BASE : DANA_BASE;
+
+  try {
+    const timestamp = new Date().toISOString();
+    const requestId = `NOTA-${Date.now()}`;
+
+    // DANA Widget API: queryUserProfile for balance
+    const resp = await fetch(
+      `${baseUrl}/dana/member/query/queryUserProfile.htm`,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "X-PARTNER-ID": partnerId,
+          "X-TIMESTAMP": timestamp,
+          "X-REQUEST-ID": requestId,
+          "X-EXTERNAL-ID": requestId,
+          "CHANNEL-ID": "95221",
+        },
+        body: JSON.stringify({
+          partnerReferenceNo: requestId,
+          merchantId: partnerId,
+          token: accessToken,
+          resourceTypes: ["BALANCE"],
+        }),
+      }
+    );
+
+    const data = await resp.json();
+
+    if (data.result?.resultCode === "00000000") {
+      const balanceInfo = data.resourceInfos?.find(
+        (r: any) => r.resourceType === "BALANCE"
+      );
+      const balanceData = balanceInfo
+        ? JSON.parse(balanceInfo.resourceValue)
+        : {};
+
+      return new Response(
+        JSON.stringify({
+          success: true,
+          balance: parseInt(balanceData.amount || "0", 10),
+          currency: balanceData.currency || "IDR",
+          provider: "DANA",
+        }),
+        { headers: { "Content-Type": "application/json" } }
+      );
+    }
+
+    return new Response(
+      JSON.stringify({
+        success: false,
+        message: data.result?.resultCode || "DANA balance inquiry failed",
+      }),
+      { status: 400, headers: { "Content-Type": "application/json" } }
+    );
+  } catch (err) {
+    return new Response(
+      JSON.stringify({ success: false, message: err.message }),
+      { status: 500, headers: { "Content-Type": "application/json" } }
+    );
+  }
+}
+
+// ──────────────────────────────────────────────────────────────
+// MAIN HANDLER
+// ──────────────────────────────────────────────────────────────
+
+serve(async (req) => {
+  // CORS
+  if (req.method === "OPTIONS") {
+    return new Response("ok", {
+      headers: {
+        "Access-Control-Allow-Origin": "*",
+        "Access-Control-Allow-Methods": "POST, OPTIONS",
+        "Access-Control-Allow-Headers": "Content-Type, Authorization",
+      },
+    });
+  }
+
+  try {
+    // Verify Supabase auth
+    const authHeader = req.headers.get("Authorization");
+    if (!authHeader) {
+      return new Response(
+        JSON.stringify({ error: "Missing authorization" }),
+        { status: 401, headers: { "Content-Type": "application/json" } }
+      );
+    }
+
+    const body = await req.json();
+    const { action, provider, phone, otp, otpToken, accessToken, deviceId, accountId, pin, referenceNo, challengeId, challengeToken } = body;
+
+    let result: Response;
+
+    switch (action) {
+      // ── Midtrans Official ──
+      case "midtrans-balance":
+        result = await midtransBalanceInquiry(accountId, provider);
+        break;
+
+      // ── GoPay Unofficial ──
+      case "gopay-login":
+        result = await gopayLoginRequest(phone);
+        break;
+      case "gopay-verify-otp":
+        result = await gopayVerifyOtp(otp, otpToken);
+        break;
+      case "gopay-verify-mfa":
+        result = await gopayVerifyMfa(challengeId, pin, challengeToken);
+        break;
+      case "gopay-balance":
+        result = await gopayGetBalance(accessToken);
+        break;
+
+      // ── OVO Unofficial ──
+      case "ovo-send-otp":
+        result = await ovoSendOtp(phone);
+        break;
+      case "ovo-verify-otp":
+        result = await ovoVerifyOtp(phone, otp, referenceNo);
+        break;
+      case "ovo-balance":
+        result = await ovoGetBalance(accessToken, deviceId);
+        break;
+
+      // ── DANA Official Widget API ──
+      case "dana-balance":
+        result = await danaBalanceInquiry(accessToken);
+        break;
+
+      default:
+        result = new Response(
+          JSON.stringify({ error: `Unknown action: ${action}` }),
+          { status: 400, headers: { "Content-Type": "application/json" } }
+        );
+    }
+
+    // Add CORS headers to response
+    const newHeaders = new Headers(result.headers);
+    newHeaders.set("Access-Control-Allow-Origin", "*");
+
+    return new Response(result.body, {
+      status: result.status,
+      headers: newHeaders,
+    });
+  } catch (err) {
+    return new Response(
+      JSON.stringify({ error: err.message }),
+      {
+        status: 500,
+        headers: {
+          "Content-Type": "application/json",
+          "Access-Control-Allow-Origin": "*",
+        },
+      }
+    );
+  }
+});

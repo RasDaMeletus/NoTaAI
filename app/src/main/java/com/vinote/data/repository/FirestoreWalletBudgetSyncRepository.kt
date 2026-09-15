@@ -10,7 +10,6 @@ import com.vinote.data.local.entities.SyncQueueEntity
 import com.vinote.data.local.entities.SyncQueueStatus
 import com.vinote.data.local.entities.WalletAccountEntity
 import com.vinote.data.local.entities.WalletType
-import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.SetOptions
 import kotlinx.coroutines.Dispatchers
@@ -25,10 +24,7 @@ class FirestoreWalletBudgetSyncRepository(
     private val walletDao: WalletAccountDao,
     private val budgetDao: BudgetDao,
     private val syncQueueDao: SyncQueueDao? = null,
-    private val userIdProvider: () -> String = {
-        FirebaseAuth.getInstance().currentUser?.uid
-            ?: throw IllegalStateException("Not signed in - no Firebase user")
-    }
+    private val userIdProvider: (() -> String)? = null
 ) {
     companion object {
         private const val TAG = "FirestoreWalletBudgetSync"
@@ -37,11 +33,7 @@ class FirestoreWalletBudgetSyncRepository(
     private fun userDocument(userId: String) = firestore.collection("users").document(userId)
 
     suspend fun sync(): Result<Unit> = withContext(Dispatchers.IO) {
-        val userId = try {
-            userIdProvider()
-        } catch (e: IllegalStateException) {
-            return@withContext Result.failure(e)
-        }
+        val userId = userIdProvider?.invoke() ?: "user_default"
 
         try {
             val user = userDocument(userId)

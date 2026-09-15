@@ -1,11 +1,8 @@
 package com.vinote.viewmodel
 
-import android.content.Intent
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.vinote.data.repository.AuthRepository
-import com.vinote.domain.auth.GoogleSignInManager
-import com.vinote.domain.model.AuthResult
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -15,20 +12,15 @@ import javax.inject.Inject
 
 /**
  * Authentication state machine for ViNote.
- *
- * Manages Google Sign-In flow using GoogleSignInManager and AuthRepository.
- * The canonical user identity lives in Firebase Auth.
+ * Manages Supabase Email Auth flow using AuthRepository.
  */
 @HiltViewModel
 class AuthViewModel @Inject constructor(
     private val authRepository: AuthRepository,
-    private val googleSignInManager: GoogleSignInManager,
 ) : ViewModel() {
 
     private val _authState = MutableStateFlow<AuthState>(AuthState.Idle)
     val authState: StateFlow<AuthState> = _authState.asStateFlow()
-
-    fun getSignInIntent() = googleSignInManager.getSignInIntent()
 
     /**
      * Checks if a user is already signed in.
@@ -52,36 +44,46 @@ class AuthViewModel @Inject constructor(
         _authState.value = AuthState.Authenticated(userId)
     }
 
-    /**
-     * Handles the result from the Google Sign-In Intent.
-     */
-    fun handleGoogleSignInResult(data: Intent?) {
+    fun loginWithEmail(email: String, password: String) {
         viewModelScope.launch {
             _authState.value = AuthState.Loading
-            when (val result = googleSignInManager.handleSignInResult(data)) {
-                is AuthResult.Success -> {
+            when (val result = authRepository.signInWithSupabaseEmail(email, password)) {
+                is Result -> {
                     val userId = authRepository.getUserId()
                     if (userId != null) {
                         _authState.value = AuthState.Authenticated(userId)
                     } else {
-                        _authState.value = AuthState.Error("Firebase Auth succeeded but userId is null")
+                        _authState.value = AuthState.Error("Supabase sign-in succeeded but userId is null")
                     }
                 }
-                is AuthResult.Error -> {
-                    _authState.value = AuthState.Error(result.message)
+            }
+        }
+    }
+
+    fun signUpWithEmail(email: String, password: String) {
+        viewModelScope.launch {
+            _authState.value = AuthState.Loading
+            when (val result = authRepository.signUpWithSupabaseEmail(email, password)) {
+                is Result -> {
+                    val userId = authRepository.getUserId()
+                    if (userId != null) {
+                        _authState.value = AuthState.Authenticated(userId)
+                    } else {
+                        _authState.value = AuthState.Error("Supabase sign-up succeeded but userId is null")
+                    }
                 }
             }
         }
     }
 
     /**
-     * Signs out the user from Google and Firebase.
+     * Signs out the user from Supabase.
      */
     fun signOut() {
         viewModelScope.launch {
             _authState.value = AuthState.Loading
             try {
-                googleSignInManager.signOut()
+                authRepository.signOutFromSupabase()
             } catch (_: Exception) {
                 // Proceed with local cleanup regardless of network result
             } finally {

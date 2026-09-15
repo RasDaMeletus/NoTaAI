@@ -12,7 +12,7 @@ import com.vinote.data.local.entities.SyncQueueEntity
 import com.vinote.data.model.TransactionItem
 import com.vinote.data.model.TransactionSource
 import com.vinote.data.model.TransactionType
-import com.vinote.domain.ai.ViNoteAiService
+import com.vinote.domain.ai.NoTaAiService
 import com.vinote.domain.wallet.ParsedWalletTransaction
 import com.vinote.domain.wallet.WalletDetectionService
 import com.vinote.domain.wallet.WalletNotification
@@ -36,7 +36,7 @@ class WalletDetectionCoordinator(
     private val detectionEventDao: DetectionEventDao,
     private val walletAccountDao: WalletAccountDao,
     private val syncQueueDao: SyncQueueDao,
-    private val aiService: ViNoteAiService? = null,
+    private val aiService: NoTaAiService? = null,
     private val notificationEngine: com.vinote.domain.notification.FinancialNotificationEngine? = null,
     private val scope: CoroutineScope = CoroutineScope(Dispatchers.IO)
 ) {

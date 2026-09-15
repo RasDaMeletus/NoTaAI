@@ -43,9 +43,7 @@ class FirestoreExpenseSyncRepository(
     }.getOrNull()
 
     private fun getUserId(): String {
-        return authUserIdProvider?.invoke()
-            ?: runCatching { com.google.firebase.auth.FirebaseAuth.getInstance().currentUser?.uid }.getOrNull()
-            ?: "usr_local_guest"
+        return authUserIdProvider?.invoke() ?: "usr_local_guest"
     }
 
     private fun getExpensesCollection() = firestoreInstance

@@ -1,6 +1,5 @@
 package com.vinote.domain.transaction
 
-import com.google.firebase.auth.FirebaseAuth
 import com.vinote.data.local.TransactionDao
 import com.vinote.data.model.TransactionItem
 import com.vinote.data.model.TransactionSource
@@ -26,7 +25,9 @@ class TransactionService(
     private val notificationEngine: FinancialNotificationEngine? = null,
     private val externalScope: CoroutineScope = CoroutineScope(Dispatchers.IO)
 ) {
-    private fun getCurrentUserId(): String = FirebaseAuth.getInstance().currentUser?.uid ?: ""
+    private var userId: String = ""
+
+    fun setUserId(id: String) { userId = id }
 
     val allTransactions: Flow<List<TransactionItem>> = transactionDao.getAllTransactions()
 
@@ -65,7 +66,7 @@ class TransactionService(
             merchant = merchant.trim(),
             source = source,
             walletName = walletName,
-            userId = getCurrentUserId(),
+            userId = userId,
             syncState = "PENDING_SYNC"
         )
 

@@ -12,7 +12,7 @@
     <uses-feature android:name="android.hardware.camera" android:required="false" />
 
     <application
-        android:name="com.vinote.ViNoteApplication"
+        android:name="com.vinote.NoTaApplication"
         android:allowBackup="true"
         android:dataExtractionRules="@xml/data_extraction_rules"
         android:fullBackupContent="@xml/backup_rules"
@@ -22,10 +22,6 @@
         android:supportsRtl="true"
         android:theme="@style/Theme.MyApplication">
 
-        <!-- Google Sign-In Web Client ID for Firebase Auth -->
-        <meta-data
-            android:name="com.google.android.gms.auth.api.signin.client.CLIENT_ID"
-            android:value="YOUR_WEB_CLIENT_ID.apps.googleusercontent.com" />
         <activity
             android:name="com.vinote.MainActivity"
             android:exported="true"
@@ -40,7 +36,7 @@
 
         <service
             android:name="com.vinote.services.wallet.WalletNotificationListenerService"
-            android:label="ViNote E-Wallet Detector"
+            android:label="NoTa E-Wallet Detector"
             android:permission="android.permission.BIND_NOTIFICATION_LISTENER_SERVICE"
             android:exported="true">
             <intent-filter>
@@ -58,7 +54,7 @@
             android:exported="false" />
 
         <receiver
-            android:name="com.vinote.ui.widget.ViNoteQuickWidgetProvider"
+            android:name="com.vinote.ui.widget.NoTaQuickWidgetProvider"
             android:label="NoTa Quick Capture"
             android:exported="true">
             <intent-filter>

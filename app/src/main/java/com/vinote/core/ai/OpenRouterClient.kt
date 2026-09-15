@@ -1,32 +1,41 @@
 package com.vinote.core.ai
 
 import android.util.Log
-import com.google.firebase.functions.FirebaseFunctions
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withContext
-import kotlin.coroutines.resume
+import okhttp3.MediaType.Companion.toMediaType
+import okhttp3.OkHttpClient
+import okhttp3.Request
+import okhttp3.RequestBody.Companion.toRequestBody
+import org.json.JSONArray
+import org.json.JSONObject
+import java.util.concurrent.TimeUnit
 
 /**
  * OpenRouter AI Gateway Client.
- * The APK never contains or sends an OpenRouter API key. Requests go through
- * the authenticated Firebase Callable Function `openRouterChat`.
+ * All requests are proxied through a Supabase Edge Function so the
+ * OPENROUTER_API_KEY is never stored inside the APK.
  */
 class OpenRouterClient(
-    private var defaultModel: String = "google/gemini-2.5-flash"
+    private var defaultModel: String = "google/gemini-2.5-flash",
+    // Edge Function URL injected externally via SupabaseClientProvider
+    private val proxyUrl: String = ""
 ) {
-    private val functions = FirebaseFunctions.getInstance("asia-southeast2")
+    private val client = OkHttpClient.Builder()
+        .connectTimeout(60, TimeUnit.SECONDS)
+        .readTimeout(60, TimeUnit.SECONDS)
+        .writeTimeout(60, TimeUnit.SECONDS)
+        .build()
 
-    fun setApiKey(@Suppress("UNUSED_PARAMETER") key: String) {
-        // Kept for source compatibility. OpenRouter credentials are server-side only.
+    // anonKey injected externally (safe to expose in APK; not the secret key)
+    private var anonKey: String = ""
+
+    fun configure(proxyBaseUrl: String, anon: String) {
+        // ponytail: if multiple concurrent requests needed, build a new OkHttpClient here
+        anonKey = anon
     }
 
-    fun getApiKey(): String = "firebase-function"
-
-    fun setModel(model: String) {
-        defaultModel = model.trim()
-    }
-
+    fun setModel(model: String) { defaultModel = model.trim() }
     fun getModel(): String = defaultModel
 
     suspend fun chatCompletion(
@@ -35,37 +44,45 @@ class OpenRouterClient(
         temperature: Double = 0.3,
         responseFormatJson: Boolean = false
     ): Result<String> = withContext(Dispatchers.IO) {
+        val url = proxyUrl.trimEnd('/')
+        if (url.isEmpty()) {
+            return@withContext Result.failure(IllegalStateException("OpenRouter proxy URL not configured"))
+        }
         try {
-            val payload = hashMapOf<String, Any>(
-                "messages" to messages.map { mapOf("role" to it.role, "content" to it.content) },
-                "model" to model,
-                "temperature" to temperature,
-                "responseFormatJson" to responseFormatJson
-            )
-
-            val result = suspendCancellableCoroutine<Any?> { continuation ->
-                val task = functions
-                    .getHttpsCallable("openRouterChat")
-                    .call(payload)
-                    .addOnSuccessListener { response ->
-                        if (continuation.isActive) continuation.resume(response.data)
-                    }
-                    .addOnFailureListener { error ->
-                        Log.w("OpenRouterClient", "Firebase AI gateway failed", error)
-                        if (continuation.isActive) continuation.resume(null)
-                    }
+            val messagesArray = JSONArray()
+            messages.forEach { msg ->
+                messagesArray.put(JSONObject().apply {
+                    put("role", msg.role)
+                    put("content", msg.content)
+                })
             }
+            val bodyJson = JSONObject().apply {
+                put("model", model)
+                put("messages", messagesArray)
+                put("temperature", temperature)
+                if (responseFormatJson) put("response_format", JSONObject().put("type", "json_object"))
+            }
+            val req = Request.Builder()
+                .url(url)
+                .addHeader("Content-Type", "application/json")
+                .apply { if (anonKey.isNotBlank()) addHeader("apikey", anonKey) }
+                .post(bodyJson.toString().toRequestBody("application/json".toMediaType()))
+                .build()
 
-            @Suppress("UNCHECKED_CAST")
-            val responseMap = result as? Map<String, Any?>
-            val content = responseMap?.get("content") as? String
-            if (content.isNullOrBlank()) {
-                Result.failure(IllegalStateException("AI gateway returned no content"))
+            val response = client.newCall(req).execute()
+            val bodyStr = response.body?.string() ?: ""
+            if (!response.isSuccessful) {
+                Log.e("OpenRouterClient", "Proxy HTTP ${response.code}: $bodyStr")
+                return@withContext Result.failure(IllegalStateException("Proxy HTTP ${response.code}"))
+            }
+            val content = JSONObject(bodyStr).optString("content", "")
+            if (content.isBlank()) {
+                Result.failure(IllegalStateException("OpenRouter proxy returned empty content"))
             } else {
                 Result.success(content)
             }
         } catch (e: Exception) {
-            Log.e("OpenRouterClient", "Error calling Firebase AI gateway", e)
+            Log.e("OpenRouterClient", "Error calling OpenRouter proxy", e)
             Result.failure(e)
         }
     }

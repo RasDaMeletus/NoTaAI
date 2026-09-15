@@ -18,11 +18,14 @@ data class WalletAccountEntity(
     val name: String,
     val type: WalletType = WalletType.EWALLET,
     val calculatedBalance: Long = 0L, // Derived from ledger
-    val providerReportedBalance: Long? = null, // From app sync/notification
+    val providerReportedBalance: Long? = null, // From app sync/notification/gateway
     val lastReconciledAt: Long? = null,
     val isAutoDetectEnabled: Boolean = true,
     val iconColorHex: String = "#0057C2",
     val accountNumber: String = "",
     val isConnected: Boolean = true,
-    val lastSyncTimestamp: Long = System.currentTimeMillis()
+    val lastSyncTimestamp: Long = System.currentTimeMillis(),
+    val gatewayType: String = "MANUAL", // "MIDTRANS" | "UNOFFICIAL" | "MANUAL"
+    val linkedAccountId: String = "",   // Phone number or account token
+    val gatewayAccessToken: String = "" // OAuth/Session token for gateway
 )

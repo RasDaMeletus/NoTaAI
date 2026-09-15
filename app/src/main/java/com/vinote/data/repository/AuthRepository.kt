@@ -1,6 +1,5 @@
 package com.vinote.data.repository
 
-import com.google.firebase.auth.FirebaseAuth
 import com.vinote.data.local.entity.UserSession
 import io.github.jan.supabase.gotrue.user.UserSession as SupabaseSession
 import javax.inject.Singleton
@@ -8,8 +7,7 @@ import kotlinx.coroutines.flow.StateFlow
 
 /**
  * Repository responsible for securely managing authentication state.
- *
- * Supports both Firebase Authentication and Supabase Authentication.
+ * Supabase Email Auth as the sole auth provider.
  */
 @Singleton
 interface AuthRepository {
@@ -30,14 +28,10 @@ interface AuthRepository {
     /** Checks if the user is currently authenticated. */
     fun isAuthenticated(): Boolean
 
-    /** Signs in with Google credentials. Stub: returns a not-implemented result. */
-    suspend fun signInWithGoogle(context: android.content.Context): com.vinote.domain.model.AuthResult =
-        com.vinote.domain.model.AuthResult.Error("Google sign-in not configured in this build")
+    /** Direct profile login (used by onboarding/quick-setup flows). */
+    fun loginWithDirectProfile(email: String, name: String, provider: String = "offline") {}
 
-    /** Direct profile login (used by onboarding/quick-setup flows). Stub. */
-    fun loginWithDirectProfile(email: String, name: String, provider: String = "google") {}
-
-    /** Logout the current user. Stub. */
+    /** Logout the current user. */
     fun logout() {}
 
     // ===== Supabase Authentication =====

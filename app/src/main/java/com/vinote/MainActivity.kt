@@ -73,7 +73,7 @@ import com.vinote.ui.theme.ViNoteTextPrimary
 import com.vinote.viewmodel.ViNoteViewModel
 import com.vinote.domain.security.BiometricSecurityManager
 import com.vinote.domain.security.ShakeDetector
-import com.vinote.ui.widget.ViNoteQuickWidgetProvider
+import com.vinote.ui.widget.NoTaQuickWidgetProvider
 import android.widget.Toast
 import dagger.hilt.android.AndroidEntryPoint
 import kotlinx.coroutines.delay
@@ -140,7 +140,7 @@ class MainActivity : ComponentActivity() {
             }
         }
 
-        val initialDestination = intent?.getStringExtra(ViNoteQuickWidgetProvider.EXTRA_NAVIGATE_TO)
+        val initialDestination = intent?.getStringExtra(NoTaQuickWidgetProvider.EXTRA_NAVIGATE_TO)
 
         setContent {
             MyApplicationTheme {
@@ -168,7 +168,7 @@ fun ViNoteApp(
     viewModel: ViNoteViewModel,
     initialDestination: String? = null
 ) {
-    val startScreen = if (initialDestination == ViNoteQuickWidgetProvider.DESTINATION_ADD_TRANSACTION) {
+    val startScreen = if (initialDestination == NoTaQuickWidgetProvider.DESTINATION_ADD_TRANSACTION) {
         ActiveScreen.ADD_TRANSACTION
     } else {
         ActiveScreen.SPLASH

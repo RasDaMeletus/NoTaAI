@@ -94,7 +94,6 @@ fun ScanReceiptScreen(
 ) {
     val context = LocalContext.current
     val isScanning by viewModel.isScanning.collectAsState()
-    val selectedPreset by viewModel.selectedReceiptPreset.collectAsState()
     val extractedReceipt by viewModel.extractedReceiptData.collectAsState()
     val notaConfig by viewModel.notaConfig.collectAsState()
     val aiEngineStatus by viewModel.aiEngineStatus.collectAsState()
@@ -483,19 +482,14 @@ fun ScanReceiptScreen(
                                                 image.close()
                                                 if (bitmap != null) {
                                                     viewModel.processCapturedReceiptBitmap(bitmap, onComplete = onBack)
-                                                } else {
-                                                    viewModel.startReceiptScanning(selectedPreset, onComplete = onBack)
                                                 }
                                             }
 
                                             override fun onError(exception: ImageCaptureException) {
                                                 Log.e("ScanReceiptScreen", "Photo capture failed", exception)
-                                                viewModel.startReceiptScanning(selectedPreset, onComplete = onBack)
                                             }
                                         }
                                     )
-                                } else {
-                                    viewModel.startReceiptScanning(selectedPreset, onComplete = onBack)
                                 }
                             },
                             enabled = !isScanning,

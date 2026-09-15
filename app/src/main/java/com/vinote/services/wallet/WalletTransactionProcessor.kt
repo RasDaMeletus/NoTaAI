@@ -2,7 +2,7 @@ package com.vinote.services.wallet
 
 import android.util.Log
 import com.vinote.data.model.TransactionSource
-import com.vinote.domain.ai.ViNoteAiService
+import com.vinote.domain.ai.NoTaAiService
 import com.vinote.domain.transaction.TransactionService
 import com.vinote.domain.wallet.WalletDetectionService
 import com.vinote.domain.wallet.WalletNotification
@@ -18,7 +18,7 @@ import kotlinx.coroutines.withContext
 class WalletTransactionProcessor(
     private val transactionService: TransactionService,
     private val deduplicationService: WalletDeduplicationService,
-    private val aiService: ViNoteAiService? = null,
+    private val aiService: NoTaAiService? = null,
     private val scope: CoroutineScope = CoroutineScope(Dispatchers.IO)
 ) {
 

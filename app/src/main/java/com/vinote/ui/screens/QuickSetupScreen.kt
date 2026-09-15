@@ -102,6 +102,9 @@ fun QuickSetupScreen(
     var savingsPercentage by remember { mutableFloatStateOf(20f) }
     var selectedGoalPreset by remember { mutableStateOf("Emergency Fund") }
     var goalTargetText by remember { mutableStateOf("3000000") }
+    var customGoalName by remember { mutableStateOf("") }
+    var customGoalAmount by remember { mutableStateOf("") }
+    var isCustomGoalSelected by remember { mutableStateOf(false) }
     var selectedColor by remember { mutableStateOf(NotaBaseColor.SOFT_PINK) }
 
     val monthlyIncome = monthlyIncomeText.toLongOrNull() ?: 5000000L
@@ -356,7 +359,7 @@ fun QuickSetupScreen(
 
                                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                                     goalPresets.forEach { (title, target) ->
-                                        val isSelected = selectedGoalPreset == title
+                                        val isSelected = !isCustomGoalSelected && selectedGoalPreset == title
                                         Box(
                                             modifier = Modifier
                                                 .fillMaxWidth()
@@ -370,6 +373,7 @@ fun QuickSetupScreen(
                                                 .clickable {
                                                     selectedGoalPreset = title
                                                     goalTargetText = target.toString()
+                                                    isCustomGoalSelected = false
                                                 }
                                                 .padding(14.dp)
                                         ) {
@@ -401,6 +405,90 @@ fun QuickSetupScreen(
                                                 }
                                             }
                                         }
+                                    }
+
+                                    // Custom Goal Option
+                                    Box(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .clip(RoundedCornerShape(14.dp))
+                                            .background(if (isCustomGoalSelected) ViNoteSecondaryFixed else ViNoteSurfaceContainerLowest)
+                                            .border(
+                                                1.5.dp,
+                                                if (isCustomGoalSelected) ViNotePrimary else Color(0xFFE2E8F0),
+                                                RoundedCornerShape(14.dp)
+                                            )
+                                            .clickable { isCustomGoalSelected = true }
+                                            .padding(14.dp)
+                                    ) {
+                                        Row(
+                                            modifier = Modifier.fillMaxWidth(),
+                                            horizontalArrangement = Arrangement.SpaceBetween,
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            Column {
+                                                Text(
+                                                    text = "✍️ Target Sendiri",
+                                                    fontWeight = FontWeight.Bold,
+                                                    fontSize = 14.sp,
+                                                    color = ViNotePrimary
+                                                )
+                                                Text(
+                                                    text = "Tulis nama dan target impianmu sendiri",
+                                                    fontSize = 12.sp,
+                                                    color = ViNoteTextSecondary
+                                                )
+                                            }
+                                            if (isCustomGoalSelected) {
+                                                Icon(
+                                                    imageVector = Icons.Default.Check,
+                                                    contentDescription = "Selected",
+                                                    tint = ViNotePrimary,
+                                                    modifier = Modifier.size(20.dp)
+                                                )
+                                            }
+                                        }
+                                    }
+
+                                    if (isCustomGoalSelected) {
+                                        Spacer(modifier = Modifier.height(4.dp))
+                                        OutlinedTextField(
+                                            value = customGoalName,
+                                            onValueChange = { customGoalName = it },
+                                            label = { Text("Nama Target (mis. Beli Motor)") },
+                                            singleLine = true,
+                                            keyboardOptions = KeyboardOptions(
+                                                keyboardType = KeyboardType.Text,
+                                                imeAction = ImeAction.Next
+                                            ),
+                                            shape = RoundedCornerShape(14.dp),
+                                            colors = OutlinedTextFieldDefaults.colors(
+                                                focusedBorderColor = ViNotePrimary,
+                                                unfocusedBorderColor = Color(0xFFDDE3EA),
+                                                focusedContainerColor = ViNoteSurfaceContainerLowest
+                                            ),
+                                            modifier = Modifier.fillMaxWidth().testTag("quicksetup_custom_goal_name")
+                                        )
+                                        Spacer(modifier = Modifier.height(8.dp))
+                                        OutlinedTextField(
+                                            value = customGoalAmount,
+                                            onValueChange = { customGoalAmount = it.filter { ch -> ch.isDigit() } },
+                                            label = { Text("Target Jumlah (Rp)") },
+                                            prefix = { Text("Rp ", fontWeight = FontWeight.Bold, color = ViNotePrimary) },
+                                            singleLine = true,
+                                            keyboardOptions = KeyboardOptions(
+                                                keyboardType = KeyboardType.Number,
+                                                imeAction = ImeAction.Done
+                                            ),
+                                            keyboardActions = KeyboardActions(onDone = { focusManager.clearFocus() }),
+                                            shape = RoundedCornerShape(14.dp),
+                                            colors = OutlinedTextFieldDefaults.colors(
+                                                focusedBorderColor = ViNotePrimary,
+                                                unfocusedBorderColor = Color(0xFFDDE3EA),
+                                                focusedContainerColor = ViNoteSurfaceContainerLowest
+                                            ),
+                                            modifier = Modifier.fillMaxWidth().testTag("quicksetup_custom_goal_amount")
+                                        )
                                     }
                                 }
                             }
@@ -545,8 +633,8 @@ fun QuickSetupScreen(
                                     monthlyIncome = monthlyIncome,
                                     dailyBudgetLimit = dailyLimit,
                                     savingsPercentage = savingsPercentage.toInt(),
-                                    firstGoalTitle = selectedGoalPreset,
-                                    firstGoalTarget = goalTarget,
+                                    firstGoalTitle = if (isCustomGoalSelected && customGoalName.isNotBlank()) customGoalName else selectedGoalPreset,
+                                    firstGoalTarget = if (isCustomGoalSelected && customGoalAmount.isNotBlank()) customGoalAmount.toLongOrNull() ?: goalTarget else goalTarget,
                                     startingColor = selectedColor
                                 )
                                 onSetupComplete()

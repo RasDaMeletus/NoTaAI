@@ -4,7 +4,7 @@ import android.app.Notification
 import android.service.notification.NotificationListenerService
 import android.service.notification.StatusBarNotification
 import android.util.Log
-import com.vinote.data.local.ViNoteDatabase
+import com.vinote.data.local.NoTaDatabase
 import com.vinote.domain.wallet.WalletNotification
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -30,7 +30,7 @@ class WalletNotificationListenerService : NotificationListenerService() {
         val existing = coordinator ?: coordinatorInstance
         if (existing != null) return existing
 
-        val db = ViNoteDatabase.getDatabase(applicationContext)
+        val db = NoTaDatabase.getDatabase(applicationContext)
         val newCoordinator = WalletDetectionCoordinator(
             transactionDao = db.transactionDao(),
             detectionEventDao = db.detectionEventDao(),

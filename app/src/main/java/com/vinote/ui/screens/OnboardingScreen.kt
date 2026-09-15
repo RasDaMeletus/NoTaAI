@@ -1,11 +1,10 @@
 package com.vinote.ui.screens
 
-import androidx.activity.compose.rememberLauncherForActivityResult
-import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -16,16 +15,21 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -43,7 +47,6 @@ import com.vinote.ui.theme.ViNoteTextSecondary
 import com.vinote.ui.theme.ViNoteWarmYellow
 import com.vinote.viewmodel.AuthState
 import com.vinote.viewmodel.AuthViewModel
-import com.vinote.domain.auth.GoogleSignInManager
 
 @Composable
 fun OnboardingScreen(
@@ -52,12 +55,8 @@ fun OnboardingScreen(
     viewModel: AuthViewModel = hiltViewModel()
 ) {
     val authState by viewModel.authState.collectAsState()
-
-    val launcher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.StartActivityForResult()
-    ) { result ->
-        viewModel.handleGoogleSignInResult(result.data)
-    }
+    var email by remember { mutableStateOf("") }
+    var password by remember { mutableStateOf("") }
 
     LaunchedEffect(authState) {
         if (authState is AuthState.Authenticated) {
@@ -103,53 +102,53 @@ fun OnboardingScreen(
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.SpaceBetween
         ) {
-            Spacer(modifier = Modifier.height(20.dp))
+            Spacer(modifier = Modifier.height(10.dp))
 
             // Center Character Hero
             Column(
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
                 NotaAvatar(
-                    size = 140.dp,
+                    size = 120.dp,
                     eyeState = NotaEyeState.HAPPY,
                     baseColor = NotaBaseColor.SOFT_PINK,
                     showSparkle = true
                 )
 
-                Spacer(modifier = Modifier.height(32.dp))
+                Spacer(modifier = Modifier.height(20.dp))
 
                 Text(
                     text = "Meet Nota,",
-                    fontSize = 32.sp,
+                    fontSize = 28.sp,
                     fontWeight = FontWeight.ExtraBold,
                     color = ViNoteTextPrimary,
                     letterSpacing = (-0.02).sp
                 )
                 Text(
                     text = "Your Financial Companion",
-                    fontSize = 24.sp,
+                    fontSize = 22.sp,
                     fontWeight = FontWeight.Bold,
                     color = ViNotePrimary
                 )
 
-                Spacer(modifier = Modifier.height(14.dp))
+                Spacer(modifier = Modifier.height(10.dp))
 
                 Text(
                     text = "Track expenses automatically, reach your dream goals, and keep your budget safe with your lively companion.",
-                    fontSize = 15.sp,
+                    fontSize = 14.sp,
                     color = ViNoteTextSecondary,
                     textAlign = TextAlign.Center,
-                    lineHeight = 22.sp
+                    lineHeight = 20.sp
                 )
             }
 
-            // Bottom Actions
+            // Bottom Actions: Email/Password fields & buttons
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
                     .navigationBarsPadding()
-                    .padding(bottom = 24.dp),
-                verticalArrangement = Arrangement.spacedBy(12.dp),
+                    .padding(bottom = 16.dp),
+                verticalArrangement = Arrangement.spacedBy(10.dp),
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
                 if (authState is AuthState.Error) {
@@ -162,19 +161,50 @@ fun OnboardingScreen(
                     )
                 }
 
-                ViNoteButton(
-                    text = if (authState is AuthState.Loading) "Signing in..." else "Sign in with Google",
-                    onClick = {
-                        try {
-                            val intent = viewModel.getSignInIntent()
-                            launcher.launch(intent)
-                        } catch (_: Throwable) {
-                            // If Google Play Services or intent fails on device, fallback to direct guest login
-                            viewModel.loginDirectly()
-                        }
-                    },
-                    testTag = "onboarding_google_sign_in_btn"
+                OutlinedTextField(
+                    value = email,
+                    onValueChange = { email = it },
+                    label = { Text("Email") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth()
                 )
+
+                OutlinedTextField(
+                    value = password,
+                    onValueChange = { password = it },
+                    label = { Text("Password") },
+                    singleLine = true,
+                    visualTransformation = PasswordVisualTransformation(),
+                    modifier = Modifier.fillMaxWidth()
+                )
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    ViNoteButton(
+                        text = if (authState is AuthState.Loading) "Sign In..." else "Sign In",
+                        onClick = {
+                            if (email.isNotBlank() && password.isNotBlank()) {
+                                viewModel.loginWithEmail(email, password)
+                            }
+                        },
+                        modifier = Modifier.weight(1f),
+                        testTag = "onboarding_email_sign_in_btn"
+                    )
+
+                    ViNoteButton(
+                        text = "Sign Up",
+                        type = ViNoteButtonType.SECONDARY,
+                        onClick = {
+                            if (email.isNotBlank() && password.isNotBlank()) {
+                                viewModel.signUpWithEmail(email, password)
+                            }
+                        },
+                        modifier = Modifier.weight(1f),
+                        testTag = "onboarding_email_sign_up_btn"
+                    )
+                }
 
                 ViNoteButton(
                     text = "Lanjut sebagai Tamu (Offline)",
