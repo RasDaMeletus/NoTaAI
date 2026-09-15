@@ -1,8 +1,0 @@
-com.example.app-pngs-0 E:\AndroidStudioProjects\ViNote-2\app\build_out\generated\res\pngs\debug
-com.example.app-res-1 E:\AndroidStudioProjects\ViNote-2\app\build_out\generated\res\processDebugGoogleServices
-com.example.app-updated_navigation_xml-2 E:\AndroidStudioProjects\ViNote-2\app\build_out\generated\updated_navigation_xml\debug
-com.example.app-packageDebugResources-3 E:\AndroidStudioProjects\ViNote-2\app\build_out\intermediates\incremental\debug\packageDebugResources\merged.dir
-com.example.app-packageDebugResources-4 E:\AndroidStudioProjects\ViNote-2\app\build_out\intermediates\incremental\debug\packageDebugResources\stripped.dir
-com.example.app-debug-5 E:\AndroidStudioProjects\ViNote-2\app\build_out\intermediates\merged_res\debug\mergeDebugResources
-com.example.app-debug-6 E:\AndroidStudioProjects\ViNote-2\app\src\debug\res
-com.example.app-main-7 E:\AndroidStudioProjects\ViNote-2\app\src\main\res
