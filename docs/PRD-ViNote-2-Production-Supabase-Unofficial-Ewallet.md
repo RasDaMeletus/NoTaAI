@@ -1,49 +1,48 @@
-# PRD — ViNote-2 Production Ready: Supabase Only + Unofficial E-Wallet
+# PRD — ViNote-2 Production Ready: Supabase Only + Hybrid AI
 
 **Status:** Implementation specification  
 **Target:** Android production release  
 **Primary backend:** Supabase  
-**E-wallet strategy:** retain existing unofficial DANA / GoPay / OVO services, isolated behind a provider abstraction  
-**Core rule:** remove every mock, demo, placeholder, fake, seeded, and hard-coded financial value from production paths.
+**E-wallet strategy:** retain existing unofficial DANA / GoPay / OVO services behind adapters  
+**AI strategy:** hybrid — deterministic local assistant first, online AI when reasoning/generation is actually needed  
+**Core rule:** no mock/demo/placeholder financial data in production paths.
 
 ---
 
 ## 1. Product Goal
 
-Make ViNote-2 a real, usable finance application rather than a prototype that only looks functional.
+Make ViNote-2 a real finance application rather than a prototype that only looks functional.
 
 The production version must:
 
-- use **Supabase as the only authentication and cloud backend authority**;
-- retain the existing **unofficial DANA, GoPay, and OVO integrations** where they currently work;
-- keep credentials, sessions, and provider-specific implementation details out of UI/domain code;
-- maintain a deterministic local financial ledger with Room;
-- synchronize authorized user data with Supabase Postgres;
-- contain **zero mock financial data** in release builds;
-- degrade honestly when an unofficial provider integration stops working;
-- never present fabricated balance, transaction, budget, or AI results as real data.
+- use Supabase as the only authentication and cloud backend authority;
+- retain the existing unofficial DANA, GoPay, and OVO integrations where they currently work;
+- use Room for local-first financial data and Supabase Postgres for cloud persistence;
+- provide a **Hybrid Chatbot** that can answer deterministic finance questions without calling an AI route;
+- call online AI only for tasks that genuinely require natural-language reasoning, explanation, summarization, or generation;
+- support camera and voice input with online-first processing and honest offline fallbacks;
+- contain zero fabricated financial values;
+- degrade honestly when network, AI, or unofficial wallet integrations fail.
 
-> Important: unofficial e-wallet APIs are inherently fragile. They may break because a provider changes its private API, authentication, anti-abuse controls, or app protocol. ViNote must isolate this risk rather than pretending the integration is guaranteed.
+Unofficial e-wallet APIs are inherently fragile and may stop working when providers change private APIs, authentication, anti-abuse controls, or app protocols. ViNote must isolate that risk.
 
 ---
 
 ## 2. Non-Goals
 
-Do not build or retain:
+Do not retain or introduce:
 
 - Firebase Authentication as an auth authority;
 - Firebase Firestore as a second production database;
 - Auth.js / NextAuth;
-- Supabase + Firebase dual-authentication;
-- hard-coded demo transactions/balances;
+- fake wallet connections or balances;
 - fake successful API responses;
-- fake wallet connections;
-- placeholder OTP/session success states;
-- generated IDs such as `user_default` or timestamp-based fake users;
-- a second backend solely to proxy the same Supabase data;
-- UI that displays sample financial values when a user has no data.
+- generated fallback users such as `user_default`;
+- large bundled LLMs solely to make offline chat appear intelligent;
+- an AI request for every chatbot message;
+- silent creation or modification of financial transactions by AI/OCR/voice.
 
-Firebase may remain only if a clearly isolated non-core dependency is proven necessary; it must not become a second source of truth. The preferred production target is **Supabase-only**.
+Mocks/fakes are allowed only in tests and isolated UI previews.
 
 ---
 
@@ -56,66 +55,56 @@ Android App
 ├── Domain / Use Cases
 ├── Repository interfaces
 │
-├── Room DB ---------------------- Local source of truth
-├── WorkManager ------------------ Reliable background sync
-├── Supabase Auth ---------------- Authentication + sessions
-├── Supabase Postgres ------------ Cloud source / recovery
-├── Supabase Storage ------------- Receipt/image storage if required
+├── Room DB ---------------------- Local financial source of truth
+├── WorkManager ------------------ Background sync
+├── Supabase Auth ---------------- Identity + session
+├── Supabase Postgres ------------ Cloud persistence / recovery
+├── Supabase Storage ------------- Optional receipt backup
+│
+├── Hybrid Assistant Engine
+│   ├── Intent Router
+│   ├── Deterministic Finance Engine
+│   ├── Local Context Builder
+│   └── Online AI Gateway
+│        └── Supabase Edge Function → OpenRouter → LLM
+│
+├── Media Input
+│   ├── CameraX
+│   │   ├── Online OCR/AI path
+│   │   └── Offline ML Kit OCR path
+│   └── Voice
+│       ├── Online STT/AI path
+│       └── Offline on-device SpeechRecognizer path
 │
 └── EWallet Provider Layer
     ├── DANA unofficial adapter
     ├── GoPay unofficial adapter
     └── OVO unofficial adapter
-             │
-             └── Provider-specific API/session implementation
 ```
 
-### Data flow
-
-```text
-User
- ↓
-Supabase Auth
- ↓
-Firebase-free Android session
- ↓
-Room ←→ SyncCoordinator ←→ Supabase Postgres
-                         
-                         └→ EWalletProvider
-                              ├→ DANA
-                              ├→ GoPay
-                              └→ OVO
-```
-
-For privileged server-side operations, use **Supabase Edge Functions** rather than Firebase Cloud Functions. Secrets must never be bundled into the APK.
+No UI layer should directly call infrastructure services.
 
 ---
 
 ## 4. Authentication — Supabase Only
 
-### Requirements
-
 `Supabase Auth` is the single identity authority.
 
 Use:
 
-- Supabase email/password and/or supported OAuth providers;
-- Supabase access token + refresh token/session handling;
-- one canonical user ID: `supabase.auth.currentUser.id`;
-- Row Level Security (RLS) on all user-owned tables.
+- Supabase email/password and/or supported OAuth;
+- Supabase access/refresh session handling;
+- canonical user ID from the authenticated Supabase session;
+- RLS on every user-owned table.
 
-### Remove
-
-From production code:
+Remove production dependencies on:
 
 - `FirebaseAuth.getInstance()`;
 - Firebase user IDs;
-- `user_default`;
-- `user_<timestamp>` fallback IDs;
-- AuthRepository implementations backed by Firebase;
-- duplicate auth state between Firebase and Supabase.
+- `user_default` or timestamp-generated users;
+- duplicate Firebase/Supabase auth state.
 
-### Target repository
+Target abstraction:
 
 ```kotlin
 interface AuthRepository {
@@ -127,13 +116,11 @@ interface AuthRepository {
 }
 ```
 
-No repository may invent a user ID. If there is no authenticated Supabase user, user-scoped cloud operations must fail safely.
+No repository may invent a user ID.
 
 ---
 
 ## 5. Supabase Database
-
-Use Postgres as the cloud source for synchronized application data.
 
 Suggested tables:
 
@@ -143,38 +130,30 @@ wallets
 transactions
 goals
 budgets
-sync_queue / sync_events (only if needed server-side)
-ewallet_connections
+wallet_connections
 provider_sync_state
 notification_events
 ```
 
-Every user-owned table must include:
+Every user-owned row must contain `user_id uuid references auth.users(id)`.
 
-```text
-user_id uuid references auth.users(id)
-```
-
-### RLS rule
-
-A user can only read/write rows where:
+RLS policy principle:
 
 ```sql
 user_id = auth.uid()
 ```
 
-Server/service-role operations must be restricted to Edge Functions and never exposed to Android.
+Service-role access is allowed only inside trusted Edge Functions and must never be shipped to Android.
 
 ---
 
 ## 6. E-Wallet Integration — KEEP UNOFFICIAL APIs
 
-The existing unofficial services are **not removed**. Instead, they become replaceable adapters.
+Existing unofficial services remain and are wrapped behind a stable abstraction:
 
 ```kotlin
 interface EWalletProvider {
     val provider: EWalletType
-
     suspend fun login(credentials: ProviderCredentials): Result<ProviderSession>
     suspend fun refreshSession(session: ProviderSession): Result<ProviderSession>
     suspend fun getBalance(session: ProviderSession): Result<ProviderBalance>
@@ -186,95 +165,45 @@ interface EWalletProvider {
 }
 ```
 
-Implement:
+Adapters:
 
 ```text
-DanaEWalletProvider
-GoPayEWalletProvider
-OvoEWalletProvider
+DanaEWalletProvider → UnofficialDanaService
+GoPayEWalletProvider → UnofficialGoPayService
+OvoEWalletProvider → UnofficialOvoService
 ```
 
-wrapping the existing:
+Flow:
 
 ```text
-UnofficialDanaService
-UnofficialGoPayService
-UnofficialOvoService
+UI → ConnectEWalletUseCase → EWalletRepository → EWalletProvider → provider service
 ```
 
-### Critical separation
-
-The UI must not directly call `UnofficialDanaService`, etc.
-
-Instead:
-
-```text
-UI
- ↓
-ConnectEWalletUseCase
- ↓
-EWalletRepository
- ↓
-EWalletProvider
- ↓
-Unofficial provider implementation
-```
-
-This allows the provider implementation to change without rewriting the app.
-
-### Unofficial API reality requirements
-
-The app must explicitly handle:
-
-- expired sessions;
-- invalid credentials;
-- OTP/challenge requirements when legitimately required by the provider flow;
-- rate limiting;
-- provider API schema changes;
-- network failures;
-- authentication failures;
-- unavailable endpoints;
-- temporary provider outages;
-- duplicate transaction responses;
-- partial synchronization.
-
-Do not claim that an unofficial integration is guaranteed or officially supported by the wallet provider.
-
-Do not attempt to bypass security controls, CAPTCHAs, device verification, or other access restrictions.
+Handle expired sessions, authentication failures, challenges, rate limits, schema changes, outages, duplicate responses, and partial syncs. Never bypass provider security controls.
 
 ---
 
-## 7. E-Wallet Credentials and Sessions
+## 7. Wallet Credentials and Sessions
 
-If the existing unofficial API genuinely requires credentials, the architecture must keep them out of ordinary UI state and logs.
+Keep credentials/session material out of UI state, Git, logs, analytics, and crash reports.
 
-Preferred flow:
+Where technically possible:
 
 ```text
 Android
- ↓ authenticated Supabase user
+ ↓ authenticated Supabase session
 Supabase Edge Function
- ↓ provider credentials/session handling
+ ↓
 Unofficial provider API
 ```
 
-Never:
-
-- log passwords;
-- log OTPs;
-- store credentials in plaintext SharedPreferences;
-- put provider secrets in Git;
-- put provider credentials in BuildConfig constants;
-- send credentials to analytics/crash reporting;
-- display provider tokens in UI.
-
-Use encrypted local storage only when local persistence is unavoidable. Prefer short-lived provider sessions and server-side secret handling where technically possible.
+Never store passwords or OTPs in plaintext. Never place provider secrets or tokens in `BuildConfig` or APK assets.
 
 ---
 
 ## 8. Wallet Balance Semantics
 
-Every wallet must distinguish between:
+Every wallet distinguishes:
 
 ```text
 calculatedBalance
@@ -283,58 +212,13 @@ lastSyncedAt
 syncStatus
 ```
 
-### calculatedBalance
+`calculatedBalance` is derived from the actual ViNote ledger. `providerReportedBalance` is the latest successfully returned provider value.
 
-Deterministically calculated by ViNote from the ledger.
-
-```text
-opening balance
-+ income
-- expense
-± adjustment
-```
-
-Transfers must not be counted as spending.
-
-### providerReportedBalance
-
-The balance returned by the e-wallet integration at the latest successful synchronization.
-
-### UI rule
-
-Never silently treat stale or unavailable provider data as current.
-
-Example:
-
-```text
-DANA
-Balance: Rp250.000
-Synced 4 minutes ago
-```
-
-If synchronization fails:
-
-```text
-DANA
-Last known balance: Rp250.000
-Could not sync just now
-[Retry]
-```
-
-Not:
-
-```text
-DANA
-Rp250.000
-```
-
-with no indication that it is stale.
+If provider synchronization fails, show the last-known value with a stale/error indicator rather than pretending it is current.
 
 ---
 
 ## 9. Transaction Synchronization
-
-Provider transactions must be normalized into the internal ledger.
 
 ```text
 ProviderTransaction
@@ -352,398 +236,586 @@ Room transaction
 Supabase sync
 ```
 
-Each imported provider transaction must have:
+Imported transactions require an internal UUID, wallet ID, provider, provider transaction ID when available, deterministic fingerprint, amount in integer minor units, type, timestamp, source, and sync state.
 
-- internal UUID;
-- wallet ID;
-- provider name;
-- provider transaction ID when available;
-- deterministic fingerprint;
-- amount in integer minor units (`Long`);
-- transaction type;
-- occurredAt;
-- import source;
-- sync status.
-
-The same provider transaction must never create two ledger entries.
+The same provider transaction must never create duplicate ledger entries.
 
 ---
 
 ## 10. Notification Detection
 
-Notification listening can remain as a complementary mechanism for wallet detection.
+Notification listening remains complementary to provider synchronization.
 
-Use it for:
+It can detect payment/incoming-money notifications and create transaction candidates. It must reconcile against imported provider transactions using deterministic fingerprints.
 
-- detecting payment notifications;
-- detecting incoming money notifications;
-- creating transaction candidates;
-- reconciling with provider synchronization.
-
-Do not automatically create a duplicate transaction when the same transaction has already been imported from the e-wallet API.
-
-Use a deterministic fingerprint based on available fields such as:
-
-```text
-provider + amount + timestamp window + merchant/reference
-```
-
-Persist the raw notification event ID/fingerprint before processing so retries cannot duplicate transactions.
-
-Because Android/OEM restrictions can stop background execution, the UI must expose:
-
-- listener enabled/disabled;
-- last detected notification;
-- last processing time;
-- processing errors;
-- recovery instructions.
-
-Never promise that detection works after the user force-stops the app or the OEM kills its process.
+Expose listener status, last processed event, processing errors, and recovery state. Do not promise background detection after force-stop or OEM process termination.
 
 ---
 
 ## 11. Room + Supabase Sync
 
-Room remains the immediate local source of truth for the app experience.
+Room is the immediate local source of truth for app interaction. Supabase is the cloud persistence/recovery layer.
 
-Supabase provides cloud persistence and cross-device recovery.
-
-### Write path
+Write path:
 
 ```text
-User action
- ↓
-Room transaction
- ↓
-SyncQueue
- ↓
-WorkManager
- ↓
-Supabase Postgres
+User action → Room → SyncQueue → WorkManager → Supabase
 ```
 
-### Pull path
+Pull path:
 
 ```text
-Supabase
- ↓
-SyncCoordinator
- ↓
-Validation
- ↓
-Room
- ↓
-UI
+Supabase → SyncCoordinator → validation → Room → UI
 ```
 
 Requirements:
 
-- stable UUIDs generated once;
-- no fake user fallback;
+- stable UUIDs;
 - idempotent upserts;
-- retry with exponential backoff;
+- retry/backoff;
 - network constraints;
 - tombstones for deletes;
 - conflict detection;
 - observable sync state;
 - no infinite retry loops.
 
-Financial transaction conflicts must not be silently overwritten.
+Financial conflicts must not be silently overwritten.
 
 ---
 
 ## 12. Remove ALL Mock Data
 
-This is a hard production gate.
+Production must contain no fake financial state.
 
-Search the entire repository for patterns including:
+Audit for:
 
 ```text
-mock
-Mock
-fake
-Fake
-sample
-Sample
-demo
-Demo
-placeholder
-Placeholder
-seed
-Seed
-hardcoded
+mock / fake / sample / demo / placeholder / seed / hardcoded
 user_default
-Rp100.000
-Rp250.000
-Rp500.000
-example transactions
-sample transactions
+hard-coded balances
+hard-coded transactions
+fake AI responses
 ```
 
-Also inspect:
+Inspect ViewModels, repositories, Room callbacks, Compose defaults, JSON assets, chart datasets, dashboard fallbacks, wallet services, goals, budgets, and debug bypasses.
 
-- ViewModels;
-- repositories;
-- Room DAOs/database callbacks;
-- Compose previews/default parameters;
-- fake API responses;
-- test fixtures accidentally used by production code;
-- JSON assets;
-- hard-coded chart datasets;
-- dashboard fallback values;
-- fake wallet balances;
-- fake transaction history;
-- fake goals/budgets;
-- fake AI responses;
-- debug-only bypasses accidentally enabled in release.
-
-### Allowed
-
-Mock/fake data is allowed **only inside automated tests and Compose previews**, and it must be structurally isolated from production dependency injection.
-
-### Forbidden
-
-```kotlin
-if (transactions.isEmpty()) {
-    transactions = demoTransactions
-}
-```
-
-Instead:
-
-```text
-transactions.isEmpty()
-        ↓
-proper empty state
-```
-
-Example:
-
-```text
-Belum ada transaksi
-
-Catat transaksi pertama kamu untuk mulai
-mengelola keuangan.
-
-[Tambah Transaksi]
-```
-
-The dashboard must never invent numbers to make the UI look complete.
+Empty data must produce an honest empty state. Loading must not be represented as `Rp0` unless the real balance is zero.
 
 ---
 
 ## 13. Production Dashboard
 
-All displayed values must come from actual repositories.
+All values must come from real repositories:
 
-Dashboard:
-
-- current wallet balances;
+- wallet balances;
 - today's spending;
 - budget progress;
 - recent transactions;
+- goals;
 - wallet sync status;
 - pending transaction candidates;
-- goals;
 - cloud sync state.
 
-Loading state must not be represented by `Rp0` unless the actual balance is zero.
+No demo numbers are allowed to make the dashboard look populated.
 
 ---
 
-## 14. AI Architecture
+# 14. Hybrid Chatbot — CORE REQUIREMENT
 
-AI remains an assistant, not the financial authority.
+The chatbot must **not** route every message to an online AI model.
 
-Allowed:
+Its architecture is a local-first intent router with deterministic finance tools and an online AI fallback.
 
-- categorize a transaction;
-- classify notification text;
-- summarize spending;
-- explain patterns;
-- suggest budget adjustments;
-- generate educational feedback.
+## 14.1 High-Level Flow
 
-Not allowed:
+```text
+User message
+     ↓
+Normalize / language detection
+     ↓
+Intent Router
+     │
+     ├── Deterministic intent
+     │      ↓
+     │   Local Finance Engine
+     │      ↓
+     │   Immediate answer
+     │
+     ├── Contextual finance intent
+     │      ↓
+     │   Local data query + rule engine
+     │      ↓
+     │   Immediate answer OR AI enhancement
+     │
+     └── Generative / ambiguous intent
+            ↓
+        Online AI Gateway
+            ↓
+        Supabase Edge Function
+            ↓
+        OpenRouter / allowed model
+```
 
-- invent balances;
-- calculate authoritative ledger totals;
-- silently create transactions;
-- silently modify transactions;
-- approve transfers;
-- override provider data;
-- fabricate missing transaction information.
+The router is the key component. It decides whether an AI call is necessary.
 
-### Online AI
+## 14.2 Questions That MUST Work Without AI
+
+The following should be answered directly from Room/database/rules when enough local data exists:
+
+| User intent | Example | Route |
+|---|---|---|
+| Current balance | “Saldo saya berapa?” | Local |
+| Today's spending | “Hari ini aku habis berapa?” | Local |
+| Monthly spending | “Bulan ini pengeluaran berapa?” | Local |
+| Transaction lookup | “Transaksi terakhir saya apa?” | Local |
+| Category total | “Bulan ini makan habis berapa?” | Local |
+| Budget status | “Budget makan masih berapa?” | Local |
+| Budget percentage | “Budget saya sudah berapa persen?” | Local |
+| Goal progress | “Tabungan target saya sudah berapa?” | Local |
+| Wallet balance | “Saldo DANA saya?” | Local/provider cache |
+| Simple arithmetic | “Rp50.000 + Rp25.000 berapa?” | Local |
+| Help/navigation | “Cara tambah transaksi?” | Local knowledge |
+| App status | “Kenapa transaksi belum sync?” | Local status engine |
+
+These requests should not consume AI quota or require an internet connection.
+
+## 14.3 Questions That MAY Use AI
+
+Use online AI when the request requires interpretation or generation beyond deterministic local capabilities:
+
+- “Kenapa pengeluaran saya bulan ini terasa besar?”
+- “Beri saya strategi supaya pengeluaran makan lebih terkontrol.”
+- “Apa pola keuangan saya dari tiga bulan terakhir?”
+- “Jelaskan kondisi keuangan saya dengan bahasa sederhana.”
+- ambiguous natural-language questions;
+- multi-step reasoning across several finance metrics;
+- personalized educational explanations;
+- conversational follow-up where deterministic intent confidence is low.
+
+Before AI is called, the app should build a **minimal structured context** from local data rather than uploading the entire database.
+
+## 14.4 Local Finance Engine
+
+Create a deterministic service such as:
+
+```kotlin
+interface FinanceQueryEngine {
+    suspend fun currentBalance(): Money
+    suspend fun spending(period: Period, category: Category?): Money
+    suspend fun recentTransactions(limit: Int): List<Transaction>
+    suspend fun budgetStatus(category: Category?): BudgetStatus
+    suspend fun goalProgress(goalId: String?): GoalProgress
+    suspend fun walletBalance(walletId: String): WalletBalance
+}
+```
+
+The engine is the authoritative source for numerical answers.
+
+AI must never calculate or invent the ledger when the local engine can provide the value.
+
+## 14.5 Intent Router
+
+Use deterministic rules/keyword matching first, then structured parsing for more flexible Indonesian language.
+
+Example:
+
+```text
+“saldo aku berapa?”
+→ BALANCE_QUERY
+→ FinanceQueryEngine.currentBalance()
+→ answer locally
+```
+
+```text
+“bulan ini aku boros gak?”
+→ SPENDING_ANALYSIS
+→ collect local metrics
+→ if simple rule can answer, answer locally
+→ otherwise AI enhancement
+```
+
+```text
+“gimana cara nabung buat beli laptop?”
+→ FINANCIAL_ADVICE
+→ online AI
+```
+
+Router output should include:
+
+```text
+intent
+confidence
+requiredData
+route = LOCAL | HYBRID | AI
+```
+
+## 14.6 Hybrid Route
+
+Some questions should use local computation first and AI only for wording/reasoning.
+
+```text
+User question
+ ↓
+Local Finance Engine
+ ↓
+Structured facts
+ ↓
+AI receives facts, not raw database
+ ↓
+Natural-language explanation
+```
+
+Example:
+
+```text
+Local engine:
+monthly_spending = 1_250_000
+food = 650_000
+food_share = 52%
+budget_food = 500_000
+budget_exceeded = true
+```
+
+AI may explain the pattern, but it must not change these facts.
+
+## 14.7 Chatbot Context and Memory
+
+The chatbot should maintain lightweight conversation context locally for the current session.
+
+Example:
+
+```text
+User: “Bulan ini aku habis berapa?”
+Bot: “Rp1.250.000.”
+User: “Kalau makan?”
+→ resolve “makan” against previous monthly spending context
+```
+
+Do not send the entire chat history or full financial database to the model by default.
+
+Use a bounded context window and redact unnecessary sensitive fields.
+
+## 14.8 Offline Chatbot Behavior
+
+Offline mode must remain useful.
+
+Available offline:
+
+- balance queries;
+- spending totals;
+- category totals;
+- budget/goal progress;
+- transaction lookup;
+- simple calculations;
+- app help;
+- deterministic explanations/templates;
+- transaction draft extraction from voice/OCR.
+
+Unavailable offline:
+
+- generative AI reasoning;
+- cloud-only knowledge;
+- server-side model inference.
+
+When AI is unavailable, the chatbot must clearly state that it can still answer data-based questions locally rather than showing a generic failure for every request.
+
+## 14.9 Chatbot Response Safety
+
+The chatbot must:
+
+- read financial numbers from trusted local/domain services;
+- never fabricate missing values;
+- distinguish calculated balance from provider-reported balance;
+- never silently create/edit/delete transactions;
+- ask for confirmation before a chatbot-created transaction is committed;
+- never expose provider credentials/tokens;
+- show a clear “AI unavailable” state when online AI cannot be reached.
+
+---
+
+# 15. AI Gateway
+
+Online AI must use:
 
 ```text
 Android
- ↓
+ ↓ authenticated request
 Supabase Edge Function
  ↓
 OpenRouter
  ↓
-LLM
+allowlisted model
 ```
 
-The OpenRouter key must never be shipped in the APK.
+The OpenRouter API key must never be shipped in the APK.
 
-Use:
+Use authentication, request-size limits, model allowlists, quotas/rate limits, bounded retries, sanitized errors, and minimal sensitive logging.
 
-- authentication checks;
-- App Check equivalent where applicable;
-- request size limits;
-- model allowlist;
-- rate limiting/quotas;
-- bounded retries;
-- sanitized errors;
-- no sensitive financial logging.
+The Edge Function should accept structured context and user intent rather than unrestricted database access.
 
 ---
 
-## 15. OCR and Voice
+# 16. Camera / Receipt Input — ONLINE + OFFLINE
 
-### OCR
+Camera input must be online-first but remain useful without connectivity.
 
-```text
-Camera
- ↓
-ML Kit / OCR
- ↓
-Extract candidates
- ↓
-User edits
- ↓
-User confirms
- ↓
-Create transaction
-```
+## 16.1 Capture
 
-### Voice
+Use CameraX for capture.
+
+Local preprocessing should:
+
+- normalize orientation;
+- crop/deskew where practical;
+- resize excessively large images;
+- compress before network upload;
+- avoid retaining unnecessary full-resolution copies.
+
+## 16.2 Online Path
 
 ```text
-Speech
+CameraX
  ↓
-Transcript
+Local preprocessing
  ↓
-Deterministic extraction / AI suggestion
+Supabase Edge Function
+ ↓
+Cloud OCR / vision processing
+ ↓
+Structured transaction candidate
  ↓
 Editable draft
  ↓
-User confirms
+User confirmation
  ↓
-Create transaction
+Room
 ```
 
-Neither OCR nor voice may silently create an incorrect financial transaction.
+Do not place third-party OCR/AI secrets in the APK.
+
+## 16.3 Offline Path
+
+```text
+CameraX
+ ↓
+Local preprocessing
+ ↓
+On-device ML Kit OCR
+ ↓
+Deterministic receipt parser
+ ↓
+Editable transaction draft
+ ↓
+User confirmation
+ ↓
+Room
+```
+
+Prefer one lightweight on-device OCR implementation rather than bundling multiple OCR engines by default. Do not bundle a large LLM solely for receipt parsing.
+
+If offline OCR fails, provide manual editing instead of fabricating fields.
+
+## 16.4 Receipt Media Lifecycle
+
+By default, raw receipt images are temporary until extraction/confirmation completes.
+
+Optional Supabase Storage backup may be offered as a user-controlled feature. Temporary files should be deleted after processing when no longer required.
 
 ---
 
-## 16. Security Requirements
+# 17. Audio / Voice Input — ONLINE + OFFLINE
 
-Before production:
+Voice input follows the same hybrid principle.
 
-- Supabase RLS enabled on every user-owned table;
-- no service-role key in Android;
-- no OpenRouter key in Android;
-- no provider passwords/tokens in logs;
-- no sensitive credentials in Git;
-- secure session refresh;
-- certificate/network security reviewed;
-- exported Android components reviewed;
-- notification data minimized;
-- crash reporting scrubbed of financial credentials;
-- release build disables debug bypasses.
+## 17.1 Online Path
+
+```text
+Microphone
+ ↓
+Speech-to-Text
+ ↓
+Transcript
+ ↓
+Intent / transaction extraction
+ ↓
+AI enhancement if required
+ ↓
+Editable draft
+ ↓
+User confirmation
+ ↓
+Room
+```
+
+Use Supabase Edge Functions for cloud STT providers when a provider API key is required.
+
+## 17.2 Offline Path
+
+Prefer Android's on-device `SpeechRecognizer` capability where the device supports it.
+
+```text
+Microphone
+ ↓
+On-device SpeechRecognizer
+ ↓
+Transcript
+ ↓
+Deterministic parser
+ ↓
+Editable draft
+ ↓
+User confirmation
+ ↓
+Room
+```
+
+The app must check on-device recognition availability rather than assuming every Android device has an offline recognizer.
+
+If unavailable, show manual input as the fallback.
+
+Test Indonesian recognition using `id-ID`.
+
+## 17.3 Audio Privacy
+
+Raw recordings should not be retained after transcription unless a future feature explicitly requires user-controlled recording storage.
+
+Do not send audio to cloud services when local processing is sufficient.
 
 ---
 
-## 17. Codebase Refactor
+# 18. APK / Model Size Strategy
+
+Hybrid functionality must not make the APK unnecessarily large.
+
+Rules:
+
+- no large LLM bundled in the base APK;
+- no duplicate OCR engines without measured benefit;
+- use platform/on-device capabilities where practical;
+- keep optional models downloadable rather than mandatory when technically possible;
+- measure release APK/AAB size and installed model footprint in CI/release checks;
+- remove unused ML dependencies and assets.
+
+Any future offline AI model must have an explicit storage/download budget and measurable product benefit before inclusion.
+
+---
+
+# 19. Codebase Refactor
 
 ### `ViNoteViewModel.kt`
 
-Remove direct infrastructure construction such as:
+ViewModels must depend on use cases/interfaces rather than constructing Firebase, Supabase, e-wallet, or AI services directly.
 
-```kotlin
-FirebaseAuth.getInstance()
-AuthRepositoryImpl(SupabaseClientProvider(...))
-```
-
-Inject interfaces through Hilt:
+Target:
 
 ```text
 ViewModel
  ↓
 UseCase
  ↓
-Repository
+Repository / Engine
+ ↓
+Infrastructure
 ```
 
 ### `AppModule.kt`
 
-Remove Firebase/Supabase mixed wiring.
+Provide through dependency injection:
 
-Provide:
-
-- Supabase client;
-- Supabase Auth repository;
-- Postgres repositories;
-- Room database;
+- Supabase client/auth repository;
+- Room database/DAOs;
 - sync coordinator;
-- e-wallet repository;
-- DANA/GoPay/OVO adapters;
+- e-wallet repository + DANA/GoPay/OVO adapters;
+- `FinanceQueryEngine`;
+- `ChatIntentRouter`;
+- `ChatbotRepository`;
 - AI gateway;
+- OCR service;
+- voice service;
 - WorkManager workers.
 
 No ViewModel should instantiate service implementations manually.
 
 ---
 
-## 18. Required E-Wallet UI
+# 20. Required UI States
 
-Wallet screen:
-
-```text
-My Wallets
-
-[DANA]
-Rp xxx.xxx
-● Connected
-Last sync: ...
-
-[GoPay]
-Rp xxx.xxx
-● Connected
-Last sync: ...
-
-[OVO]
-Not connected
-[Connect]
-```
-
-Connection states:
+## Chatbot
 
 ```text
-DISCONNECTED
-CONNECTING
-CONNECTED
-SYNCING
-STALE
-AUTH_REQUIRED
+READY
+PROCESSING_LOCAL
+PROCESSING_AI
+AI_UNAVAILABLE_LOCAL_ONLY
+NO_DATA
 ERROR
 ```
 
-The app must not show `CONNECTED` merely because a local preference says the wallet was enabled. It requires a verified successful provider session.
+The UI should not imply that every response came from AI. A small route indicator may be used:
+
+```text
+Answered from your data
+AI-assisted
+Offline
+```
+
+## Camera
+
+```text
+READY
+CAPTURING
+PROCESSING_ONLINE
+PROCESSING_OFFLINE
+NEEDS_REVIEW
+CONFIRMED
+OCR_FAILED
+PERMISSION_DENIED
+SYNC_PENDING
+```
+
+## Voice
+
+```text
+READY
+LISTENING
+TRANSCRIBING_ONLINE
+TRANSCRIBING_OFFLINE
+NEEDS_REVIEW
+CONFIRMED
+ON_DEVICE_UNAVAILABLE
+PERMISSION_DENIED
+ERROR
+```
+
+No fake “success” state may be shown when extraction or synchronization actually failed.
 
 ---
 
-## 19. Error Handling
+# 21. Error Handling
 
-Every external integration must produce actionable states.
+Every external integration must return an actionable state.
 
 Examples:
 
 ```text
+AI unavailable
+→ Answer data-based questions locally
+→ Retry AI
+```
+
+```text
+Offline voice unavailable on this device
+→ Use manual input
+```
+
+```text
+Receipt OCR failed
+→ Edit transaction manually
+```
+
+```text
 Provider unavailable
+→ Keep last-known balance with stale indicator
 → Retry
 ```
 
@@ -752,34 +824,46 @@ Session expired
 → Reconnect wallet
 ```
 
-```text
-Provider response changed
-→ Sync temporarily unavailable
-```
-
-```text
-No transactions found
-→ Empty state, not demo data
-```
-
-Never convert provider errors into fabricated successful responses.
+Never convert failures into fabricated success responses.
 
 ---
 
-## 20. Testing Strategy
+# 22. Security Requirements
 
-### Unit tests
+Before production:
 
-- balance calculation;
-- transaction classification;
-- duplicate fingerprinting;
-- transfer handling;
-- budget calculation;
-- goal calculation;
-- provider response normalization;
+- Supabase RLS enabled on all user-owned tables;
+- no service-role key in Android;
+- no OpenRouter/STT provider secrets in Android;
+- no provider passwords/tokens in logs;
+- secure session refresh;
+- notification data minimized;
+- temporary media cleaned up;
+- crash reporting scrubbed of sensitive financial data;
+- release builds disable debug bypasses;
+- Edge Functions validate authenticated user identity and request shape.
+
+---
+
+# 23. Testing Strategy
+
+## Unit tests
+
+- balance calculations;
+- spending/category queries;
+- budget and goal calculations;
+- intent classification;
+- local chatbot responses;
+- ambiguous intent routing;
+- hybrid context generation;
+- transaction extraction;
+- receipt parsing;
+- voice parsing;
+- duplicate fingerprints;
+- provider normalization;
 - sync conflict handling.
 
-### Integration tests
+## Integration tests
 
 - Supabase Auth;
 - RLS isolation;
@@ -787,131 +871,85 @@ Never convert provider errors into fabricated successful responses.
 - wallet import;
 - notification import;
 - duplicate prevention;
-- expired provider session;
-- provider outage;
+- provider outage/session expiry;
+- online AI gateway;
+- AI failure → local chatbot fallback;
+- online OCR → offline OCR fallback;
+- online voice → offline voice fallback;
 - offline → online recovery.
 
-### UI tests
+## Production acceptance tests
 
-- first-run empty dashboard;
-- no transactions;
-- no wallets;
-- wallet connected;
-- wallet stale;
-- provider error;
-- sync pending;
-- sync failure;
-- OCR confirmation;
-- voice confirmation.
-
-Mock data may exist in tests, but production DI must never load test fixtures.
-
----
-
-## 21. Production Acceptance Criteria
-
-A release is blocked if any of these remain:
-
-- Firebase is still an auth authority;
-- Supabase and Firebase user IDs can diverge;
-- `user_default` exists in production paths;
-- fake/demo financial values appear in the app;
-- empty states show invented transactions;
-- fake wallet connection succeeds without provider verification;
-- unofficial API failures are converted to fake success;
-- provider transactions can duplicate;
-- wallet balance is double-counted;
-- provider credentials are logged or shipped insecurely;
-- service-role keys are inside the APK;
-- RLS allows cross-user data access;
-- offline edits disappear after reconnect;
-- sync loops forever;
-- AI fabricates financial totals;
-- release build contains demo bypasses.
+1. A user with no transactions sees an empty state, not sample data.
+2. “Saldo saya berapa?” is answered locally without an AI request.
+3. “Bulan ini aku habis berapa?” uses actual Room data.
+4. A complex financial question can use online AI when connected.
+5. If AI fails, deterministic finance questions continue to work.
+6. Camera works online and falls back to on-device OCR offline when supported.
+7. Voice works online and falls back to on-device recognition when supported.
+8. Unsupported offline voice capability falls back to manual entry.
+9. OCR/voice never commits a transaction without user confirmation.
+10. No provider/API secret exists in the APK.
+11. DANA/GoPay/OVO integrations remain accessible through provider adapters.
+12. Stale e-wallet balances are visibly marked.
+13. Identical provider/notification transactions cannot duplicate the ledger.
+14. Release builds contain no production mock/demo financial data.
 
 ---
 
-## 22. Implementation Order
+# 24. Implementation Priority
 
-### Phase 1 — Authentication migration
+### P0 — Correctness and production safety
 
-1. Remove Firebase Auth usage.
-2. Implement Supabase Auth repository.
-3. Update DI/Hilt.
-4. Make Supabase user ID canonical.
-5. Remove all fake user IDs.
+- Supabase-only auth/data path;
+- remove Firebase production authority;
+- remove fake financial data;
+- secure AI gateway;
+- preserve and isolate unofficial e-wallet adapters;
+- Room/Supabase synchronization.
 
-### Phase 2 — Database
+### P1 — Hybrid intelligence
 
-1. Define Supabase Postgres schema.
-2. Add RLS.
-3. Implement CRUD repositories.
-4. Verify cross-user isolation.
+- `FinanceQueryEngine`;
+- deterministic `ChatIntentRouter`;
+- local chatbot answers;
+- AI fallback/generative route;
+- bounded contextual memory;
+- offline chatbot states.
 
-### Phase 3 — Local ledger
+### P2 — Hybrid media input
 
-1. Audit Room entities.
-2. Use `Long` minor units for money.
-3. Remove seeded/demo rows.
-4. Fix transaction/transfer semantics.
+- CameraX capture/preprocessing;
+- online receipt OCR path;
+- offline ML Kit OCR path;
+- online voice/STT path;
+- offline on-device SpeechRecognizer path;
+- editable drafts and confirmation.
 
-### Phase 4 — Sync
+### P3 — Hardening
 
-1. Implement SyncQueue.
-2. Add WorkManager workers.
-3. Implement idempotent upserts.
-4. Implement conflict handling.
-5. Add sync status UI.
-
-### Phase 5 — E-wallet
-
-1. Preserve existing unofficial services.
-2. Wrap them in `EWalletProvider`.
-3. Implement DANA/GoPay/OVO connection state machine.
-4. Secure credentials/session handling.
-5. Normalize provider transactions.
-6. Add deduplication.
-7. Implement balance reconciliation.
-8. Handle expired sessions and provider failures.
-
-### Phase 6 — Mock-data purge
-
-Perform repository-wide audit and delete every production mock/demo path.
-
-### Phase 7 — AI/OCR/Voice
-
-Harden these features only after the core ledger and wallet flows are reliable.
-
-### Phase 8 — Release hardening
-
-Run security, offline, sync, provider failure, and real-device tests.
+- provider failure handling;
+- duplicate reconciliation;
+- privacy/media cleanup;
+- APK/model-size measurement;
+- comprehensive offline/online integration tests;
+- release audit for secrets, mocks, and debug bypasses.
 
 ---
 
-## 23. Definition of Done
+# 25. Definition of Done
 
-ViNote-2 is production-ready when a clean installation behaves like this:
+ViNote-2 is production-ready only when:
 
-1. User signs up/logs in through Supabase.
-2. No demo financial information appears.
-3. Empty screens are genuinely empty.
-4. User can create a real wallet.
-5. User can connect an e-wallet through the implemented unofficial provider flow.
-6. Provider balance is fetched only after successful synchronization.
-7. Provider transactions are imported without duplicates.
-8. Notification detection can complement provider synchronization.
-9. Room works offline.
-10. Changes sync to Supabase when connectivity returns.
-11. User data is isolated through RLS.
-12. Provider/API failure is shown honestly.
-13. No credentials or secrets leak into the APK/logs.
-14. AI assists the user without becoming the source of financial truth.
-15. Release build contains no production mock/demo data.
-
----
-
-## 24. Product Principle
-
-> **NoTa should show what it actually knows, not what makes the interface look complete.**
-
-The unofficial e-wallet integrations may be fragile, but the rest of the application must remain reliable. Provider failure should degrade one integration, not corrupt the user's ledger, authentication, or financial history.
+- Supabase is the sole production auth/cloud authority;
+- all financial values originate from real data;
+- unofficial DANA/GoPay/OVO services remain functional through adapters;
+- the chatbot has a functioning local deterministic route and does not unnecessarily call AI;
+- complex questions can use the online AI route safely;
+- AI failure does not break basic chatbot finance queries;
+- camera and voice both support online processing plus honest offline fallback;
+- large AI models are not unnecessarily bundled into the APK;
+- OCR/voice/chatbot suggestions require confirmation before ledger mutation;
+- Room and Supabase synchronize reliably;
+- security and RLS checks pass;
+- production builds contain no fake/demo financial state.
