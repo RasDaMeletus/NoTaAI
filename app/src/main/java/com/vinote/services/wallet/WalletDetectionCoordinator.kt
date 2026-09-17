@@ -55,7 +55,7 @@ class WalletDetectionCoordinator(
 
     fun processNotificationAsync(
         notification: WalletNotification,
-        userId: String = "user_default",
+        userId: String = "",
         onCompleted: ((Boolean, String) -> Unit)? = null
     ) {
         scope.launch {
@@ -66,7 +66,7 @@ class WalletDetectionCoordinator(
 
     suspend fun processNotification(
         notification: WalletNotification,
-        userId: String = "user_default"
+        userId: String
     ): Pair<Boolean, String> = withContext(Dispatchers.IO) {
         try {
             val adapter = WalletDetectionService.findAdapterForPackage(notification.packageName)

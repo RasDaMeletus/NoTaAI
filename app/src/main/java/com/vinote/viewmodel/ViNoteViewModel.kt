@@ -43,8 +43,6 @@ import com.vinote.data.gateway.PaymentGatewayService
 import com.vinote.data.gateway.UnofficialDanaService
 import com.vinote.data.gateway.UnofficialGoPayService
 import com.vinote.data.gateway.UnofficialOvoService
-import com.vinote.data.repository.FirestoreExpenseSyncRepository
-import com.vinote.data.repository.FirestoreWalletBudgetSyncRepository
 import com.vinote.data.repository.SyncStatus
 import com.vinote.data.repository.NoTaRepository
 import com.vinote.data.sync.CloudSyncStatus
@@ -110,25 +108,7 @@ enum class ActivityFilter {
 
 class ViNoteViewModel(application: Application) : AndroidViewModel(application) {
     private val database = NoTaDatabase.getDatabase(application)
-    private val firebaseAuth = FirebaseAuth.getInstance()
     val authRepository: AuthRepository = AuthRepositoryImpl(SupabaseClientProvider(application))
-    private val firestoreSyncRepository = FirestoreExpenseSyncRepository()
-
-    val firestoreWalletBudgetSyncRepository = FirestoreWalletBudgetSyncRepository(
-        walletDao = database.walletAccountDao(),
-        budgetDao = database.budgetDao(),
-        syncQueueDao = database.syncQueueDao()
-    )
-
-    val cloudSynchronizer = NoTaCloudSynchronizer(
-        transactionDao = database.transactionDao(),
-        goalDao = database.goalDao(),
-        syncQueueDao = database.syncQueueDao(),
-        authRepository = authRepository,
-        firestoreExpenseRepository = firestoreSyncRepository,
-        firestoreWalletBudgetRepository = firestoreWalletBudgetSyncRepository,
-        scope = viewModelScope
-    )
 
     private val repository = NoTaRepository(
         transactionDao = database.transactionDao(),
@@ -138,16 +118,13 @@ class ViNoteViewModel(application: Application) : AndroidViewModel(application) 
         detectionEventDao = database.detectionEventDao(),
         syncQueueDao = database.syncQueueDao(),
         budgetDao = database.budgetDao(),
-        authRepository = authRepository,
-        cloudSynchronizer = cloudSynchronizer,
-        firestoreWalletBudgetSyncRepository = firestoreWalletBudgetSyncRepository
+        authRepository = authRepository
     )
 
     // Domain Services & Hardened Detection Coordinator
     val notificationEngine = FinancialNotificationEngine(application)
     val transactionService = TransactionService(
         transactionDao = database.transactionDao(),
-        firestoreSyncRepository = firestoreSyncRepository,
         notificationEngine = notificationEngine,
         externalScope = viewModelScope
     )

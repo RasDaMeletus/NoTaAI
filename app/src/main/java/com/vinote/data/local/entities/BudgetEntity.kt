@@ -7,7 +7,7 @@ import androidx.room.PrimaryKey
 data class BudgetEntity(
     @PrimaryKey
     val id: String = "default_budget",
-    val userId: String = "user_default",
+    val userId: String = "",
     val monthlyLimit: Long = 3000000L,
     val dailyLimit: Long = 100000L,
     val warningThresholdPercent: Float = 0.85f,

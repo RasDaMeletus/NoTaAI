@@ -87,18 +87,11 @@ class AuthRepositoryImpl @Inject constructor(
 
     override fun isAuthenticated(): Boolean = _currentSession.value?.isAuthenticated == true
 
-    override fun getCanonicalUserId(): String = _userId.value ?: "user_default"
+    override fun getCanonicalUserId(): String = _userId.value
+        ?: throw IllegalStateException("No authenticated user. User must sign in via Supabase Auth.")
 
     override fun loginWithDirectProfile(email: String, name: String, provider: String) {
-        val uid = "user_${System.currentTimeMillis()}"
-        _userId.value = uid
-        _currentSession.value = com.vinote.data.local.entity.UserSession(
-            userId = uid,
-            email = email,
-            name = name,
-            provider = provider,
-            isAuthenticated = true
-        )
+        throw UnsupportedOperationException("Direct profile login removed. Use Supabase Auth only.")
     }
 
     // ===== Supabase Authentication Implementation =====

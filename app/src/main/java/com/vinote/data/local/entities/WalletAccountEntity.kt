@@ -14,7 +14,7 @@ enum class WalletType {
 data class WalletAccountEntity(
     @PrimaryKey
     val id: String,
-    val userId: String = "user_default",
+    val userId: String = "",
     val name: String,
     val type: WalletType = WalletType.EWALLET,
     val calculatedBalance: Long = 0L, // Derived from ledger

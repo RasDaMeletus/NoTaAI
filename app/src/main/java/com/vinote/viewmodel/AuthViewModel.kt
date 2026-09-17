@@ -40,7 +40,7 @@ class AuthViewModel @Inject constructor(
      */
     fun loginDirectly(name: String = "NoTa User", email: String = "user@vinote.local") {
         authRepository.loginWithDirectProfile(email, name, "offline")
-        val userId = authRepository.getUserId() ?: "user_default"
+        val userId = authRepository.getUserId() ?: "offline_user"
         _authState.value = AuthState.Authenticated(userId)
     }
 

@@ -4,8 +4,6 @@ import com.vinote.data.local.TransactionDao
 import com.vinote.data.model.TransactionItem
 import com.vinote.data.model.TransactionSource
 import com.vinote.data.model.TransactionType
-import com.vinote.data.repository.FirestoreExpenseSyncRepository
-import com.vinote.domain.finance.FinancialAnalyticsService
 import com.vinote.domain.notification.FinancialNotificationEngine
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -21,7 +19,6 @@ import kotlinx.coroutines.withContext
  */
 class TransactionService(
     private val transactionDao: TransactionDao,
-    private val firestoreSyncRepository: FirestoreExpenseSyncRepository = FirestoreExpenseSyncRepository(),
     private val notificationEngine: FinancialNotificationEngine? = null,
     private val externalScope: CoroutineScope = CoroutineScope(Dispatchers.IO)
 ) {

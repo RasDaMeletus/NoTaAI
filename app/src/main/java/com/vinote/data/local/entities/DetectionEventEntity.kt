@@ -15,7 +15,7 @@ enum class DetectionStatus {
 data class DetectionEventEntity(
     @PrimaryKey
     val id: String, // Unique event ID
-    val userId: String = "user_default",
+    val userId: String = "",
     val provider: String, // e.g. "DANA", "GoPay", "BCA"
     val packageName: String,
     val rawTitle: String,

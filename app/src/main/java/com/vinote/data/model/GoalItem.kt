@@ -7,7 +7,7 @@ import androidx.room.PrimaryKey
 data class GoalItem(
     @PrimaryKey(autoGenerate = true)
     val id: Long = 0L,
-    val userId: String = "user_default",
+    val userId: String = "",
     val title: String,
     val targetAmount: Long, // in IDR
     val currentAmount: Long, // in IDR

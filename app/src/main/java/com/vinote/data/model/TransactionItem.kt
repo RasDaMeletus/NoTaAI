@@ -21,7 +21,7 @@ enum class TransactionSource {
 data class TransactionItem(
     @PrimaryKey(autoGenerate = true)
     val id: Long = 0L,
-    val userId: String = "user_default",
+    val userId: String = "",
     val title: String,
     val amount: Long, // in IDR (exact integer representation, no float inaccuracies)
     val category: String,

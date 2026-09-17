@@ -90,7 +90,7 @@ class WalletNotificationListenerService : NotificationListenerService() {
         var coordinator: WalletDetectionCoordinator? = null
         var isListenerActive: Boolean = true
         var isServiceConnected: Boolean = false
-        var activeUserId: String = "user_default"
+        var activeUserId: String = ""
     }
 }
 
