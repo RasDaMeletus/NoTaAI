@@ -192,23 +192,38 @@ class ViNoteViewModel(application: Application) : AndroidViewModel(application) 
     private val _aiConfig = MutableStateFlow(AiModelConfig())
     val aiConfig = _aiConfig.asStateFlow()
 
-    // Active User ID helper
-    private val activeUserId: String get() = authRepository.getCanonicalUserId()
+    // Active User ID helper.
+    // Must NEVER throw during ViewModel construction: the app has to be able to
+    // instantiate this ViewModel while logged out, otherwise the sign-in screen
+    // itself can never appear. Callers that require a real id handle null.
+    private val activeUserId: String?
+        get() = try {
+            authRepository.getCanonicalUserId()
+        } catch (e: IllegalStateException) {
+            null
+        }
+
+    // Must match the id used when a user is not signed in yet. Local-only
+    // sessions (and the pre-login state) are scoped to this id so the UI can
+    // render while waiting for Supabase Auth to complete.
+    private val guestUserId: String = "guest"
+
+    private val activeUserIdOrGuest: String get() = activeUserId ?: guestUserId
 
     // Transactions Flow
     val allTransactions: StateFlow<List<TransactionItem>> = transactionService.allTransactions
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     // Pending Transactions (Medium Confidence Detections requiring approval)
-    val pendingReviewTransactions: StateFlow<List<TransactionItem>> = repository.getPendingTransactionsFlow(activeUserId)
+    val pendingReviewTransactions: StateFlow<List<TransactionItem>> = repository.getPendingTransactionsFlow(activeUserIdOrGuest)
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     // Detection Events Log Flow
-    val detectionEvents: StateFlow<List<DetectionEventEntity>> = repository.getDetectionEventsFlow(activeUserId)
+    val detectionEvents: StateFlow<List<DetectionEventEntity>> = repository.getDetectionEventsFlow(activeUserIdOrGuest)
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     // Wallet Accounts from Room
-    val walletAccounts: StateFlow<List<WalletAccountEntity>> = repository.getWalletsFlow(activeUserId)
+    val walletAccounts: StateFlow<List<WalletAccountEntity>> = repository.getWalletsFlow(activeUserIdOrGuest)
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     // Goals Flow
@@ -217,12 +232,12 @@ class ViNoteViewModel(application: Application) : AndroidViewModel(application) 
 
     // Transaction Templates Flow (Quick 1-tap presets)
     val transactionTemplates: StateFlow<List<TransactionTemplateEntity>> = transactionTemplateDao
-        .getTemplatesForUser(activeUserId)
+        .getTemplatesForUser(activeUserIdOrGuest)
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     // Recurring Scheduled Transactions Flow
     val recurringTransactions: StateFlow<List<RecurringTransactionEntity>> = recurringTransactionDao
-        .getRecurringForUser(activeUserId)
+        .getRecurringForUser(activeUserIdOrGuest)
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     // Search and Filter for Activity screen
@@ -579,7 +594,7 @@ class ViNoteViewModel(application: Application) : AndroidViewModel(application) 
 
         // Wire notification listener coordinator
         WalletNotificationListenerService.coordinator = detectionCoordinator
-        WalletNotificationListenerService.activeUserId = activeUserId
+        WalletNotificationListenerService.activeUserId = activeUserIdOrGuest
 
         // Observe detection coordinator real-time alerts
         viewModelScope.launch {
@@ -710,7 +725,7 @@ class ViNoteViewModel(application: Application) : AndroidViewModel(application) 
         onComplete: (CsvImportSummary) -> Unit = {}
     ) {
         viewModelScope.launch(Dispatchers.IO) {
-            val parseResult = BankStatementParser.parseCsv(csvContent, defaultUserId = activeUserId)
+            val parseResult = BankStatementParser.parseCsv(csvContent, defaultUserId = activeUserIdOrGuest)
             if (parseResult.transactions.isEmpty()) {
                 val summary = CsvImportSummary(
                     importedCount = 0,
@@ -726,7 +741,7 @@ class ViNoteViewModel(application: Application) : AndroidViewModel(application) 
                 return@launch
             }
 
-            val existingList = transactionDao.getTransactionsForUser(activeUserId).first()
+            val existingList = transactionDao.getTransactionsForUser(activeUserIdOrGuest).first()
             val uniqueItems = BankStatementParser.filterDuplicates(parseResult.transactions, existingList)
             val duplicatesCount = parseResult.transactions.size - uniqueItems.size
 
@@ -769,7 +784,7 @@ class ViNoteViewModel(application: Application) : AndroidViewModel(application) 
         viewModelScope.launch(Dispatchers.IO) {
             transactionTemplateDao.insertTemplate(
                 TransactionTemplateEntity(
-                    userId = activeUserId,
+                    userId = activeUserIdOrGuest,
                     name = name,
                     amount = amount,
                     category = category,
@@ -811,7 +826,7 @@ class ViNoteViewModel(application: Application) : AndroidViewModel(application) 
         viewModelScope.launch(Dispatchers.IO) {
             recurringTransactionDao.insertRecurring(
                 RecurringTransactionEntity(
-                    userId = activeUserId,
+                    userId = activeUserIdOrGuest,
                     title = title,
                     amount = amount,
                     category = category,
@@ -835,7 +850,7 @@ class ViNoteViewModel(application: Application) : AndroidViewModel(application) 
 
     fun checkAndProcessDueRecurring() {
         viewModelScope.launch(Dispatchers.IO) {
-            val count = recurringScheduler.processDueTransactions(activeUserId)
+            val count = recurringScheduler.processDueTransactions(activeUserIdOrGuest)
             if (count > 0) {
                 showBanner("$count transaksi rutin jatuh tempo telah dieksekusi otomatis 🔁")
             }
@@ -894,14 +909,14 @@ class ViNoteViewModel(application: Application) : AndroidViewModel(application) 
 
     fun toggleWalletAccountAutoDetect(walletId: String, isEnabled: Boolean) {
         viewModelScope.launch {
-            repository.toggleWalletAutoDetect(walletId, activeUserId, isEnabled)
+            repository.toggleWalletAutoDetect(walletId, activeUserIdOrGuest, isEnabled)
             showBanner(if (isEnabled) "Auto-detection enabled for wallet" else "Auto-detection paused for wallet")
         }
     }
 
     fun reconcileWalletAccount(walletId: String, reconciledBalance: Long) {
         viewModelScope.launch {
-            repository.reconcileWalletBalance(walletId, activeUserId, reconciledBalance)
+            repository.reconcileWalletBalance(walletId, activeUserIdOrGuest, reconciledBalance)
             showBanner("Wallet balance reconciled to ${FormatUtils.formatRupiah(reconciledBalance)} 💳")
         }
     }
@@ -959,7 +974,7 @@ class ViNoteViewModel(application: Application) : AndroidViewModel(application) 
     fun addCustomCategory(name: String, type: TransactionType) {
         viewModelScope.launch(Dispatchers.IO) {
             val newCategory = TransactionCategoryEntity(
-                userId = activeUserId,
+                userId = activeUserIdOrGuest,
                 name = name,
                 type = type,
                 isCustom = true
@@ -982,7 +997,7 @@ class ViNoteViewModel(application: Application) : AndroidViewModel(application) 
             val amount = _keypadAmount.value.toLongOrNull() ?: 0L
             if (amount > 0) {
                 _pendingTransaction.value = TransactionItem(
-                    userId = activeUserId,
+                    userId = activeUserIdOrGuest,
                     title = title,
                     amount = amount,
                     category = category,
@@ -1330,7 +1345,7 @@ class ViNoteViewModel(application: Application) : AndroidViewModel(application) 
             val walletType = if (type.contains("E-Wallet", ignoreCase = true) || type.contains("Wallet", ignoreCase = true)) WalletType.EWALLET else WalletType.BANK
             val newWallet = WalletAccountEntity(
                 id = newId,
-                userId = activeUserId,
+                userId = activeUserIdOrGuest,
                 name = bankName,
                 type = walletType,
                 calculatedBalance = balance,
@@ -1394,7 +1409,7 @@ class ViNoteViewModel(application: Application) : AndroidViewModel(application) 
                 text = text,
                 timestamp = System.currentTimeMillis()
             )
-            val (success, message) = detectionCoordinator.processNotification(notif, activeUserId)
+            val (success, message) = detectionCoordinator.processNotification(notif, activeUserIdOrGuest)
             if (success) {
                 showBanner("⚡ Auto-Detected: $message")
                 evaluateBudgetStatus()
@@ -1428,7 +1443,7 @@ class ViNoteViewModel(application: Application) : AndroidViewModel(application) 
 
     fun rejectPendingDetection(transactionId: Long) {
         viewModelScope.launch {
-            repository.deleteTransaction(transactionId, activeUserId)
+            repository.deleteTransaction(transactionId, activeUserIdOrGuest)
             showBanner("Transaction dismissed")
         }
     }
@@ -1460,7 +1475,7 @@ class ViNoteViewModel(application: Application) : AndroidViewModel(application) 
                     if (matchingWallet != null) {
                         val delta = if (tx.type == TransactionType.EXPENSE) -tx.amount else tx.amount
                         val newBal = (matchingWallet.calculatedBalance + delta).coerceAtLeast(0L)
-                        repository.reconcileWalletBalance(matchingWallet.id, activeUserId, newBal)
+                        repository.reconcileWalletBalance(matchingWallet.id, activeUserIdOrGuest, newBal)
                     }
                 }
 
@@ -1511,7 +1526,7 @@ class ViNoteViewModel(application: Application) : AndroidViewModel(application) 
     fun clearAllTransactions() {
         viewModelScope.launch {
             transactionService.clearAll()
-            repository.clearAllData(activeUserId)
+            repository.clearAllData(activeUserIdOrGuest)
             _selectedTransactionDetail.value = null
             showBanner("All transaction history and data reset cleanly 🧹")
         }
@@ -1543,7 +1558,7 @@ class ViNoteViewModel(application: Application) : AndroidViewModel(application) 
                 else -> icons.random()
             }
             val newGoal = GoalItem(
-                userId = activeUserId,
+                userId = activeUserIdOrGuest,
                 title = title,
                 targetAmount = targetAmount,
                 currentAmount = 0L,
@@ -1642,7 +1657,7 @@ class ViNoteViewModel(application: Application) : AndroidViewModel(application) 
         val parsedAi = hybridAiProcessor.parseVoiceText(text = transcript)
 
         _pendingTransaction.value = TransactionItem(
-            userId = activeUserId,
+            userId = activeUserIdOrGuest,
             title = parsedAi.title,
             amount = parsedAi.amount,
             category = parsedAi.category,
@@ -1676,7 +1691,7 @@ class ViNoteViewModel(application: Application) : AndroidViewModel(application) 
                 _isScanning.value = false
 
                 _pendingTransaction.value = TransactionItem(
-                    userId = activeUserId,
+                    userId = activeUserIdOrGuest,
                     title = parsedData.merchant,
                     amount = parsedData.totalAmount,
                     category = parsedData.category,
@@ -1708,14 +1723,14 @@ class ViNoteViewModel(application: Application) : AndroidViewModel(application) 
             _isNotaTyping.value = true
 
             // Gather grounded deterministic facts via Controlled Tools
-            val balance = financeTools.getCurrentBalance(activeUserId)
-            val dailySpent = financeTools.getDailySpending(activeUserId)
-            val recentTxs = financeTools.getRecentTransactionsSummary(activeUserId)
-            val budgetStatus = financeTools.getBudgetStatus(activeUserId)
-            val goalsSummary = financeTools.getGoalsProgressSummary(activeUserId)
+            val balance = financeTools.getCurrentBalance(activeUserIdOrGuest)
+            val dailySpent = financeTools.getDailySpending(activeUserIdOrGuest)
+            val recentTxs = financeTools.getRecentTransactionsSummary(activeUserIdOrGuest)
+            val budgetStatus = financeTools.getBudgetStatus(activeUserIdOrGuest)
+            val goalsSummary = financeTools.getGoalsProgressSummary(activeUserIdOrGuest)
 
             val systemContext = financeTools.buildGroundedSystemContext(
-                userId = activeUserId,
+                userId = activeUserIdOrGuest,
                 balance = balance,
                 dailySpent = dailySpent,
                 txSummary = recentTxs,
@@ -1743,7 +1758,7 @@ class ViNoteViewModel(application: Application) : AndroidViewModel(application) 
             if (aiResponse.action is AiAction.ProposeTransaction) {
                 val parsed = aiResponse.action.transaction
                 _pendingTransaction.value = TransactionItem(
-                    userId = activeUserId,
+                    userId = activeUserIdOrGuest,
                     title = parsed.title,
                     amount = parsed.amount,
                     category = parsed.category,

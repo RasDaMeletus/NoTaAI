@@ -84,4 +84,9 @@
 # --- Enum values used by name ---
 -keepclassmembers enum * { public static **[] values(); public static ** valueOf(java.lang.String); }
 
+# --- ML Kit: component registrars are loaded reflectively and need no-arg ctors ---
+-keep class com.google.mlkit.** { *; }
+-dontwarn com.google.mlkit.**
+-dontwarn com.google.android.gms.internal.mlkit_vision_*.**
+
 
