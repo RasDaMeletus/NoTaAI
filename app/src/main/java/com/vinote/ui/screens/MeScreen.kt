@@ -559,10 +559,6 @@ private fun ImportCsvDialog(
     onImport: (String) -> Unit
 ) {
     var csvText by remember { mutableStateOf("") }
-    val sampleCsv = "Tanggal,Keterangan,Nominal,Tipe\n" +
-            "2026-09-06,Kopi Janji Jiwa,22000,Pengeluaran\n" +
-            "2026-09-06,Makan Siang Soto,30000,Pengeluaran\n" +
-            "2026-09-05,Transfer Masuk Bonus,500000,Pemasukan"
 
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -604,18 +600,6 @@ private fun ImportCsvDialog(
                     },
                     shape = RoundedCornerShape(12.dp)
                 )
-
-                TextButton(
-                    onClick = { csvText = sampleCsv },
-                    modifier = Modifier.align(Alignment.End)
-                ) {
-                    Text(
-                        text = "Isi Contoh Sampel",
-                        fontSize = 12.sp,
-                        fontWeight = FontWeight.SemiBold,
-                        color = ViNotePrimary
-                    )
-                }
             }
         },
         confirmButton = {

@@ -10,7 +10,6 @@ import com.vinote.data.supabase.SupabaseClientProvider
 import com.vinote.data.repository.AuthRepository
 import com.vinote.data.repository.AuthRepositoryImpl
 import com.vinote.data.local.entity.UserSession
-import com.google.firebase.auth.FirebaseAuth
 import com.vinote.domain.model.AuthResult
 import com.vinote.data.engine.ExtractedReceiptData
 import com.vinote.data.engine.ExtractedVoiceEntity
@@ -58,13 +57,13 @@ import com.vinote.domain.finance.FinancialAnalyticsService
 import com.vinote.domain.finance.FinancialHealthReport
 import com.vinote.domain.finance.FinancialHealthScore
 import com.vinote.domain.finance.SpendingTrendReport
-import com.vinote.data.local.entities.TransactionTemplateEntity
 import com.vinote.data.local.entities.RecurringTransactionEntity
 import com.vinote.data.local.entities.RecurringFrequency
 import com.vinote.data.local.entities.AchievementEntity
 import com.vinote.data.local.entities.MerchantEmbeddingEntity
 import com.vinote.data.local.entities.TransactionCategoryEntity
 import com.vinote.data.local.entities.SpendingPredictionEntity
+import com.vinote.data.local.entities.TransactionTemplateEntity
 import com.vinote.domain.gamification.AchievementManager
 import com.vinote.domain.finance.SpendingPredictionEngine
 import com.vinote.domain.finance.SpendingPredictionResult
@@ -110,6 +109,14 @@ class ViNoteViewModel(application: Application) : AndroidViewModel(application) 
     private val database = NoTaDatabase.getDatabase(application)
     val authRepository: AuthRepository = AuthRepositoryImpl(SupabaseClientProvider(application))
 
+    private val cloudSynchronizer = NoTaCloudSynchronizer(
+        transactionDao = database.transactionDao(),
+        goalDao = database.goalDao(),
+        syncQueueDao = database.syncQueueDao(),
+        authRepository = authRepository,
+        scope = viewModelScope
+    )
+
     private val repository = NoTaRepository(
         transactionDao = database.transactionDao(),
         goalDao = database.goalDao(),
@@ -118,7 +125,8 @@ class ViNoteViewModel(application: Application) : AndroidViewModel(application) 
         detectionEventDao = database.detectionEventDao(),
         syncQueueDao = database.syncQueueDao(),
         budgetDao = database.budgetDao(),
-        authRepository = authRepository
+        authRepository = authRepository,
+        cloudSynchronizer = cloudSynchronizer
     )
 
     // Domain Services & Hardened Detection Coordinator
@@ -245,16 +253,7 @@ class ViNoteViewModel(application: Application) : AndroidViewModel(application) 
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     // User Profile State
-    private val _userProfile = MutableStateFlow(
-        UserProfile(
-            fullName = "NoTa User",
-            email = "",
-            phone = "",
-            avatarInitials = "NU",
-            dailyBudgetLimit = 0L,
-            monthlyIncome = 0L
-        )
-    )
+    private val _userProfile = MutableStateFlow(UserProfile())
     val userProfile = _userProfile.asStateFlow()
 
     // Financial Health Score Flow (Deterministic 0-100 Offline Engine)
@@ -370,7 +369,7 @@ class ViNoteViewModel(application: Application) : AndroidViewModel(application) 
     }.stateIn(
         viewModelScope,
         SharingStarted.WhileSubscribed(5000),
-        FinancialAnalyticsService.calculateSpendingTrends(emptyList(), 150000L)
+        FinancialAnalyticsService.calculateSpendingTrends(emptyList(), 0L)
     )
 
     // Connected Wallets directly mapped from Room
@@ -565,7 +564,6 @@ class ViNoteViewModel(application: Application) : AndroidViewModel(application) 
     val selectedTransactionDetail = _selectedTransactionDetail.asStateFlow()
 
     // Computed Constants
-    val baseAvailableBalance: Long = 1250000L
     val dailyLimit: Long get() = _userProfile.value.dailyBudgetLimit
 
     init {
@@ -631,9 +629,8 @@ class ViNoteViewModel(application: Application) : AndroidViewModel(application) 
             }
         }
 
-        // Check due recurring transactions and seed initial templates
+        // Check due recurring transactions
         checkAndProcessDueRecurring()
-        seedInitialTemplatesIfEmpty()
 
         // Seed and evaluate achievements + hydrate learned merchants
         viewModelScope.launch(Dispatchers.IO) {
@@ -758,61 +755,7 @@ class ViNoteViewModel(application: Application) : AndroidViewModel(application) 
         }
     }
 
-    private fun seedInitialTemplatesIfEmpty() {
-        viewModelScope.launch(Dispatchers.IO) {
-            val initial = listOf(
-                TransactionTemplateEntity(
-                    userId = activeUserId,
-                    name = "Kopi Pagi",
-                    amount = 25000L,
-                    category = "Food",
-                    type = TransactionType.EXPENSE,
-                    walletName = "GoPay",
-                    colorHex = "#FF6B00",
-                    iconName = "Coffee",
-                    usageCount = 5
-                ),
-                TransactionTemplateEntity(
-                    userId = activeUserId,
-                    name = "Makan Siang",
-                    amount = 35000L,
-                    category = "Food",
-                    type = TransactionType.EXPENSE,
-                    walletName = "DANA",
-                    colorHex = "#118EEA",
-                    iconName = "Restaurant",
-                    usageCount = 8
-                ),
-                TransactionTemplateEntity(
-                    userId = activeUserId,
-                    name = "Bensin Motor",
-                    amount = 50000L,
-                    category = "Transport",
-                    type = TransactionType.EXPENSE,
-                    walletName = "GoPay",
-                    colorHex = "#00AED6",
-                    iconName = "DirectionsCar",
-                    usageCount = 3
-                ),
-                TransactionTemplateEntity(
-                    userId = activeUserId,
-                    name = "Parkir",
-                    amount = 5000L,
-                    category = "Transport",
-                    type = TransactionType.EXPENSE,
-                    walletName = "OVO",
-                    colorHex = "#4C3494",
-                    iconName = "LocalParking",
-                    usageCount = 12
-                )
-            )
-            for (tmpl in initial) {
-                if (transactionTemplateDao.getTemplateById(tmpl.id) == null) {
-                    transactionTemplateDao.insertTemplate(tmpl)
-                }
-            }
-        }
-    }
+
 
     fun saveTransactionTemplate(
         name: String,
@@ -906,7 +849,7 @@ class ViNoteViewModel(application: Application) : AndroidViewModel(application) 
     // OpenRouter AI Config setters
     fun setOpenRouterApiKey(key: String) {
         _aiConfig.value = _aiConfig.value.copy(apiKey = key)
-        // API key is now handled server-side via Firebase Functions; kept for config persistence only
+        // API key is now handled server-side via Supabase Edge Functions; kept for config persistence only
         showBanner(if (key.isNotBlank()) "OpenRouter API Key saved (server-side) 🤖" else "OpenRouter key cleared")
     }
 
@@ -1069,7 +1012,7 @@ class ViNoteViewModel(application: Application) : AndroidViewModel(application) 
         showBanner(if (forced) "Forced On-Device Offline Mode 🔒" else "Automatic Hybrid AI Routing Active ⚡")
     }
 
-    // Authentication and Onboarding (Firebase + CredentialManager)
+    // Authentication and Onboarding (Supabase Auth + CredentialManager)
     fun signInWithGoogleViaCredentialManager(
         context: Context,
         onSuccess: () -> Unit = {},
@@ -1669,7 +1612,7 @@ class ViNoteViewModel(application: Application) : AndroidViewModel(application) 
     fun toggleSpeechRecording() {
         if (speechRecorderService.isRecording.value || _isVoiceListening.value) {
             stopRealSpeechRecording()
-            processVoiceInput()
+            viewModelScope.launch { processVoiceInput() }
         } else {
             startRealSpeechRecording()
         }
@@ -1694,23 +1637,21 @@ class ViNoteViewModel(application: Application) : AndroidViewModel(application) 
         }
     }
 
-    fun processVoiceInput() {
-        viewModelScope.launch {
-            val transcript = _voiceTranscript.value
-            val parsedAi = hybridAiProcessor.parseVoiceText(transcript)
+    suspend fun processVoiceInput() {
+        val transcript = _voiceTranscript.value
+        val parsedAi = hybridAiProcessor.parseVoiceText(text = transcript)
 
-            _pendingTransaction.value = TransactionItem(
-                userId = activeUserId,
-                title = parsedAi.title,
-                amount = parsedAi.amount,
-                category = parsedAi.category,
-                type = parsedAi.type,
-                merchant = if (parsedAi.merchant.isNotBlank()) parsedAi.merchant else parsedAi.title,
-                source = TransactionSource.VOICE,
-                walletName = parsedAi.walletName,
-                timeLabel = "Just now"
-            )
-        }
+        _pendingTransaction.value = TransactionItem(
+            userId = activeUserId,
+            title = parsedAi.title,
+            amount = parsedAi.amount,
+            category = parsedAi.category,
+            type = parsedAi.type,
+            merchant = if (parsedAi.merchant.isNotBlank()) parsedAi.merchant else parsedAi.title,
+            source = TransactionSource.VOICE,
+            walletName = parsedAi.walletName,
+            timeLabel = "Just now"
+        )
     }
 
     // Hybrid Receipt Scan & OCR Processing

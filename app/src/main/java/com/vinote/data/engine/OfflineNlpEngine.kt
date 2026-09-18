@@ -426,77 +426,10 @@ object OfflineNlpEngine {
     /**
      * Built-in Offline Receipt Sample Presets for instantaneous testing without camera hardware
      */
-    val sampleReceipts: Map<String, List<String>> = mapOf(
-        "GrabFood Order" to listOf(
-            "GRABFOOD INDONESIA",
-            "Order ID: GF-89421-99",
-            "Date: 27/08/2026 12:45",
-            "--------------------------------",
-            "Nasi Ayam Crispy Sambal Matah   1x  Rp 22.000",
-            "Es Teh Manis Jumbo              1x  Rp  6.000",
-            "Ongkir Delivery                 1x  Rp  5.000",
-            "Promo Diskon GrabFood               -Rp 8.000",
-            "--------------------------------",
-            "SUBTOTAL : Rp 33.000",
-            "PB1 / TAX : Rp 2.000",
-            "TOTAL BAYAR : Rp 25.000",
-            "Payment: GoPay e-Wallet"
-        ),
-        "Kopi Kenangan" to listOf(
-            "KOPI KENANGAN - GRAND INDONESIA",
-            "Jl. M.H. Thamrin No. 1",
-            "Date: 27 Aug 2026 09:15",
-            "--------------------------------",
-            "Kopi Kenangan Mantan (R)        1x  Rp 18.000",
-            "Extra Shot Espresso             1x  Rp  4.000",
-            "Roti Coklat Klasik              1x  Rp 10.000",
-            "--------------------------------",
-            "SUBTOTAL : Rp 32.000",
-            "TAX 10%  : Rp 3.200",
-            "TOTAL : Rp 35.200",
-            "Paid via QRIS BCA"
-        ),
-        "Indomaret Mart" to listOf(
-            "INDOMARET KEMANG RAYA",
-            "PT INDOMARCO PRISMATAMA",
-            "Date: 26/08/2026 19:30",
-            "--------------------------------",
-            "Ultra Milk Coklat 250ml         2x  Rp 14.000",
-            "SilverQueen Almond 58g          1x  Rp 16.500",
-            "Pringles Sour Cream             1x  Rp 21.000",
-            "Air Mineral Aqua 600ml          2x  Rp  7.000",
-            "Kantong Belanja Eco             1x  Rp    500",
-            "--------------------------------",
-            "TOTAL : Rp 59.000",
-            "TUNAI CASH : Rp 100.000",
-            "KEMBALIAN  : Rp 41.000"
-        ),
-        "RM Padang Sederhana" to listOf(
-            "RM PADANG SEDERHANA",
-            "Jl. Fatmawati No. 42",
-            "Date: 27/08/2026 13:10",
-            "--------------------------------",
-            "Nasi Rendang Sapi               1x  Rp 28.000",
-            "Ayam Pop Gurih                  1x  Rp 22.000",
-            "Sayur Nangka + Sambal Ijo       1x  Rp  4.000",
-            "Es Jeruk Murni                  1x  Rp  8.000",
-            "--------------------------------",
-            "SUBTOTAL : Rp 62.000",
-            "TOTAL : Rp 62.000",
-            "Metode: OVO e-Wallet"
-        )
-    )
+    val sampleReceipts: Map<String, List<String>> = emptyMap()
 
     /**
      * Offline Spoken Samples for Quick Testing
      */
-    val sampleVoiceUtterances = listOf(
-        "Makan siang nasi padang 35 ribu pakai GoPay",
-        "Beli kopi kenangan mantan 22rb bayar QRIS",
-        "GoRide ke kantor 14 ribu",
-        "Belanja bulanan di Indomaret 59 ribu",
-        "Bayar token listrik PLN 100 ribu",
-        "Cinema XXI nonton bioskop 50k",
-        "Gaji freelance masuk 2.5 juta ke BCA"
-    )
+    val sampleVoiceUtterances: List<String> = emptyList()
 }

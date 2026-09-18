@@ -4,6 +4,7 @@ import com.vinote.data.local.TransactionDao
 import com.vinote.data.model.TransactionItem
 import com.vinote.data.model.TransactionSource
 import com.vinote.data.model.TransactionType
+import com.vinote.domain.finance.FinancialAnalyticsService
 import com.vinote.domain.notification.FinancialNotificationEngine
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -73,13 +74,6 @@ class TransactionService(
                 val insertedId = transactionDao.insertTransaction(transaction)
                 val itemWithId = transaction.copy(id = insertedId)
 
-                // Trigger cloud sync asynchronously (local-first, non-blocking)
-                externalScope.launch {
-                    try {
-                        firestoreSyncRepository.syncLocalToRemote(listOf(itemWithId))
-                    } catch (_: Exception) {}
-                }
-
                 // If automated or e-wallet, emit notification event
                 if (source == TransactionSource.E_WALLET || source == TransactionSource.AUTO_DETECTED || source == TransactionSource.BANK_SYNC) {
                     notificationEngine?.notifyTransactionDetected(itemWithId)
@@ -93,11 +87,6 @@ class TransactionService(
     suspend fun deleteTransaction(id: Long): Result<Unit> = withContext(Dispatchers.IO) {
         try {
             transactionDao.deleteById(id)
-            externalScope.launch {
-                try {
-                    firestoreSyncRepository.deleteRemoteExpense(id)
-                } catch (_: Exception) {}
-            }
             Result.success(Unit)
         } catch (e: Exception) {
             Result.failure(e)
@@ -122,11 +111,6 @@ class TransactionService(
     suspend fun clearAll(): Result<Unit> = withContext(Dispatchers.IO) {
         try {
             transactionDao.clearAll()
-            externalScope.launch {
-                try {
-                    firestoreSyncRepository.clearAllRemoteExpenses()
-                } catch (_: Exception) {}
-            }
             Result.success(Unit)
         } catch (e: Exception) {
             Result.failure(e)

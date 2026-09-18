@@ -19,3 +19,8 @@
 # If you keep the line number information, uncomment this to
 # hide the original source file name.
 #-renamesourcefileattribute SourceFile
+
+# R8: slf4j's LoggerFactory binds to an optional static logger that is not
+# present on Android. Suppress the missing-class warning.
+-dontwarn org.slf4j.impl.StaticLoggerBinder
+

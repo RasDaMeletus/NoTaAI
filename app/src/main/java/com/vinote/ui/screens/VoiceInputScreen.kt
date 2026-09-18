@@ -55,9 +55,11 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import kotlinx.coroutines.launch
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.draw.shadow
@@ -106,6 +108,8 @@ fun VoiceInputScreen(
     val aiEngineStatus by viewModel.aiEngineStatus.collectAsState()
 
     var isEditingTranscript by remember { mutableStateOf(false) }
+
+    val scope = rememberCoroutineScope()
 
     var hasAudioPermission by remember {
         mutableStateOf(
@@ -683,10 +687,14 @@ fun VoiceInputScreen(
                     .clip(RoundedCornerShape(50))
                     .background(ViNotePrimary)
                     .clickable {
-                        viewModel.stopRealSpeechRecording()
-                        viewModel.processVoiceInput()
-                        viewModel.confirmPendingTransaction()
-                        onBack()
+                        // Parse must complete and publish _pendingTransaction BEFORE we
+                        // confirm, otherwise confirm reads a stale/null value.
+                        scope.launch {
+                            viewModel.stopRealSpeechRecording()
+                            viewModel.processVoiceInput()
+                            viewModel.confirmPendingTransaction()
+                            onBack()
+                        }
                     }
                     .testTag("voice_done_btn"),
                 contentAlignment = Alignment.Center

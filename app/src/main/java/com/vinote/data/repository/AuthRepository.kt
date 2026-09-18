@@ -16,8 +16,8 @@ interface AuthRepository {
     /** Gets the current authenticated user ID, or null if not authenticated. */
     fun getUserId(): String?
 
-    /** Gets the canonical user ID for the current session, falling back to a default "user_default" identifier if no user is signed in. */
-    fun getCanonicalUserId(): String
+    /** Gets the canonical user ID for the current session. Requires authentication. */
+    fun getCanonicalUserId(): String { return getUserId() ?: throw IllegalStateException("User not authenticated") }
 
     /** Sets the authenticated user ID when session is established. */
     fun setUserId(userId: String?)

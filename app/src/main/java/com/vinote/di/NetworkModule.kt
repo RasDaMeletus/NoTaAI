@@ -12,6 +12,7 @@ import com.vinote.data.remote.api.UserApi
 import com.vinote.data.remote.api.WalletApi
 import com.vinote.core.ai.OpenRouterClient
 import com.vinote.data.remote.SessionTokenProvider
+import com.example.BuildConfig
 import dagger.Module
 import dagger.Provides
 import dagger.hilt.InstallIn
@@ -45,7 +46,7 @@ object NetworkModule {
             .addInterceptor(authInterceptor)
             .addInterceptor(
                 HttpLoggingInterceptor().apply {
-                    level = HttpLoggingInterceptor.Level.BODY
+                    level = if (BuildConfig.DEBUG) HttpLoggingInterceptor.Level.BODY else HttpLoggingInterceptor.Level.NONE
                 }
             )
             .connectTimeout(30, TimeUnit.SECONDS)

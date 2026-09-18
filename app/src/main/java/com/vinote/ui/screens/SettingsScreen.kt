@@ -264,8 +264,8 @@ fun SettingsScreen(
 
                     ViNoteCard(padding = 0.dp) {
                         val syncSubtitle = when (syncStatus) {
-                            SyncStatus.IDLE -> if (lastSyncTimestamp != null) "Last synced: Just now" else "Connected to Firebase"
-                            SyncStatus.SYNCING -> "Synchronizing with Firestore..."
+                            SyncStatus.IDLE -> if (lastSyncTimestamp != null) "Last synced: Just now" else "Connected to Cloud"
+                            SyncStatus.SYNCING -> "Synchronizing with Supabase..."
                             SyncStatus.SUCCESS -> "All expenses backed up to Cloud"
                             SyncStatus.ERROR -> "Sync error, tap to retry"
                         }
