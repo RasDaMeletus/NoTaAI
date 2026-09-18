@@ -309,6 +309,53 @@ fun AddTransactionScreen(
                 }
             }
 
+            // Numeric keypad: the only way to enter an amount manually.
+            // 3 columns x 4 rows -> 1-9, then 000 / 0 / backspace.
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(vertical = 8.dp),
+                verticalArrangement = Arrangement.spacedBy(6.dp)
+            ) {
+                val keypadKeys = listOf(
+                    "1", "2", "3",
+                    "4", "5", "6",
+                    "7", "8", "9",
+                    "000", "0", "<-"
+                )
+                keypadKeys.chunked(3).forEach { rowKeys ->
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        rowKeys.forEach { key ->
+                            Box(
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .height(48.dp)
+                                    .clip(RoundedCornerShape(12.dp))
+                                    .background(ViNoteSurfaceContainerLow)
+                                    .clickable {
+                                        when (key) {
+                                            "<-" -> viewModel.deleteKeypadDigit()
+                                            else -> viewModel.appendKeypadDigit(key)
+                                        }
+                                    }
+                                    .testTag("keypad_$key"),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Text(
+                                    text = key,
+                                    fontSize = 18.sp,
+                                    fontWeight = FontWeight.SemiBold,
+                                    color = ViNoteTextPrimary
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+
             ViNoteButton(
                 text = if (selectedTransactionType == TransactionType.EXPENSE) "Confirm Expense" else "Confirm Income",
                 onClick = {

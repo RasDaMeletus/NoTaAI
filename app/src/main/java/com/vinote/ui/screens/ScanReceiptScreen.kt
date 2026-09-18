@@ -3,8 +3,10 @@ package com.vinote.ui.screens
 import android.Manifest
 import android.content.pm.PackageManager
 import android.graphics.Bitmap
+import android.graphics.BitmapFactory
 import android.util.Log
 import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.camera.core.CameraSelector
 import androidx.camera.core.ImageCapture
@@ -46,6 +48,7 @@ import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.FlashOff
 import androidx.compose.material.icons.filled.FlashOn
 import androidx.compose.material.icons.filled.PhotoCamera
+import androidx.compose.material.icons.filled.PhotoLibrary
 import androidx.compose.material.icons.filled.ReceiptLong
 import androidx.compose.material.icons.filled.Videocam
 import androidx.compose.material3.CircularProgressIndicator
@@ -76,6 +79,7 @@ import com.vinote.data.model.NotaEyeState
 import com.vinote.ui.components.FormatUtils
 import com.vinote.ui.components.NotaAvatar
 import com.vinote.ui.components.ViNoteButton
+import com.vinote.ui.components.ViNoteButtonType
 import com.vinote.ui.components.camera.CameraPreviewView
 import com.vinote.ui.components.camera.toBitmap
 import com.vinote.ui.theme.ViNoteMintSuccess
@@ -108,6 +112,26 @@ fun ScanReceiptScreen(
         contract = ActivityResultContracts.RequestPermission()
     ) { isGranted ->
         hasCameraPermission = isGranted
+    }
+
+    // Pick a receipt photo from the gallery instead of taking one.
+    val galleryLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.PickVisualMedia()
+    ) { uri ->
+        if (uri != null) {
+            try {
+                context.contentResolver.openInputStream(uri)?.use { inputStream ->
+                    val bitmap = BitmapFactory.decodeStream(inputStream)
+                    if (bitmap != null) {
+                        viewModel.processCapturedReceiptBitmap(bitmap, onComplete = onBack)
+                    } else {
+                        Log.e("ScanReceiptScreen", "Gallery image could not be decoded")
+                    }
+                }
+            } catch (t: Throwable) {
+                Log.e("ScanReceiptScreen", "Gallery pick failed", t)
+            }
+        }
     }
 
     LaunchedEffect(Unit) {
@@ -478,10 +502,16 @@ fun ScanReceiptScreen(
                                         cameraExecutor,
                                         object : ImageCapture.OnImageCapturedCallback() {
                                             override fun onCaptureSuccess(image: ImageProxy) {
-                                                val bitmap = image.toBitmap()
-                                                image.close()
-                                                if (bitmap != null) {
-                                                    viewModel.processCapturedReceiptBitmap(bitmap, onComplete = onBack)
+                                                try {
+                                                    val bitmap = image.toBitmap()
+                                                    image.close()
+                                                    if (bitmap != null) {
+                                                        viewModel.processCapturedReceiptBitmap(bitmap, onComplete = onBack)
+                                                    } else {
+                                                        Log.e("ScanReceiptScreen", "Captured image could not be decoded")
+                                                    }
+                                                } catch (t: Throwable) {
+                                                    Log.e("ScanReceiptScreen", "Photo capture failed", t)
                                                 }
                                             }
 
@@ -509,8 +539,28 @@ fun ScanReceiptScreen(
                                     )
                                 }
                             },
-                            modifier = Modifier.fillMaxWidth(),
-                            testTag = "capture_receipt_btn"
+                            modifier = Modifier
+                                .weight(1.6f)
+                                .testTag("capture_receipt_btn")
+                        )
+
+                        // Gallery: analyze an existing receipt photo.
+                        ViNoteButton(
+                            text = "Gallery",
+                            onClick = { galleryLauncher.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)) },
+                            enabled = !isScanning,
+                            type = ViNoteButtonType.SECONDARY,
+                            leadingIcon = {
+                                Icon(
+                                    imageVector = Icons.Default.PhotoLibrary,
+                                    contentDescription = "Pick from gallery",
+                                    tint = ViNotePrimary,
+                                    modifier = Modifier.size(20.dp)
+                                )
+                            },
+                            modifier = Modifier
+                                .weight(1f)
+                                .testTag("gallery_receipt_btn")
                         )
                     }
                 }

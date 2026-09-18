@@ -3,6 +3,7 @@ package com.vinote.ui.components.camera
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.graphics.Matrix
+import android.util.Log
 import androidx.camera.core.ImageProxy
 import androidx.camera.core.CameraSelector
 import androidx.compose.runtime.Composable
@@ -89,7 +90,16 @@ fun ImageProxy.toBitmap(): Bitmap? {
     val buffer = planes[0].buffer
     val bytes = ByteArray(buffer.remaining())
     buffer.get(bytes)
-    val bitmap = BitmapFactory.decodeByteArray(bytes, 0, bytes.size)
+
+    // A failed or partial capture yields bytes that are not a complete JPEG.
+    // BitmapFactory does not return null for those — it throws, which has
+    // crashed the app on snap. Treat every decode failure as "no image".
+    val bitmap = try {
+        BitmapFactory.decodeByteArray(bytes, 0, bytes.size)
+    } catch (t: Throwable) {
+        Log.e("CameraPreviewView", "Decode jpeg byte array failed", t)
+        null
+    }
     return bitmap?.let {
         val matrix = Matrix().apply { postRotate(imageInfo.rotationDegrees.toFloat()) }
         val rotated = Bitmap.createBitmap(it, 0, 0, it.width, it.height, matrix, true)
