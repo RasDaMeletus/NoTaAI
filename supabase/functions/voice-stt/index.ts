@@ -54,36 +54,6 @@ serve(async (req) => {
       }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" }, status: 200 }
     )
-
-    // Convert base64 audio to blob/form-data for Whisper STT
-    const binaryAudio = decode(audioBase64)
-    const formData = new FormData()
-    const audioFile = new File([binaryAudio], "voice.wav", { type: "audio/wav" })
-    formData.append("file", audioFile)
-    formData.append("model", "openai/whisper-large-v3")
-    formData.append("language", languageCode || "id")
-
-    const sttResponse = await fetch("https://openrouter.ai/api/v1/audio/transcriptions", {
-      method: "POST",
-      headers: {
-        "Authorization": `Bearer ${OPENROUTER_API_KEY}`,
-      },
-      body: formData,
-    })
-
-    if (!sttResponse.ok) {
-      const errText = await sttResponse.text()
-      console.error("OpenRouter STT Error:", errText)
-      throw new Error(`Cloud STT service error: ${sttResponse.statusText}`)
-    }
-
-    const sttResult = await sttResponse.json()
-    const transcript = sttResult.text || "" 
-
-    return new Response(JSON.stringify({ transcript }), {
-      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      status: 200,
-    })
   } catch (error) {
     return new Response(JSON.stringify({ error: error.message }), {
       status: 400,
