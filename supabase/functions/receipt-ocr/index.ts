@@ -8,6 +8,11 @@ import 'https://deno.land/x/dotenv@v3.2.0/load.ts'
 const RESEMBLE_AI_API_KEY = Deno.env.get('RESEMBLE_AI_API_KEY')
 const RESEMBLE_AI_PROJECT_ID = Deno.env.get('RESEMBLE_AI_PROJECT_ID')
 
+// Free OpenRouter models only, per project requirement. Ling Flash VL is the
+// vision-capable model in the free chain, so it is used for receipt OCR.
+const OPENROUTER_API_KEY = Deno.env.get('OPENROUTER_API_KEY')
+const OPENROUTER_MODEL = 'inclusionai/ling-3.0-flash-vl:free'
+
 serve(async (req) => {
     try {
         // Create a Supabase client with the Auth context of the user making the request

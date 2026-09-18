@@ -43,6 +43,18 @@ serve(async (req) => {
       throw new Error("Server Configuration Error: OPENROUTER_API_KEY not set.")
     }
 
+    // No free transcription model is available on OpenRouter; the app uses
+    // on-device Android SpeechRecognizer for STT. This endpoint is kept only
+    // as a future hook and reports the limitation honestly instead of
+    // charging a paid whisper call.
+    return new Response(
+      JSON.stringify({
+        transcript: "",
+        error: "Cloud STT is not available on the free tier. Using on-device speech recognition instead.",
+      }),
+      { headers: { ...corsHeaders, "Content-Type": "application/json" }, status: 200 }
+    )
+
     // Convert base64 audio to blob/form-data for Whisper STT
     const binaryAudio = decode(audioBase64)
     const formData = new FormData()

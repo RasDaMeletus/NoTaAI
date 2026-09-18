@@ -1,14 +1,10 @@
 package com.vinote.domain.ai
 
+import com.vinote.core.ai.FreeModels
+
 data class AiModelConfig(
-    val selectedModel: String = "google/gemini-2.5-flash",
-    val availableModels: List<String> = listOf(
-        "google/gemini-2.5-flash",
-        "anthropic/claude-3.5-sonnet",
-        "openai/gpt-4o-mini",
-        "meta-llama/llama-3.3-70b-instruct",
-        "mistralai/mistral-small-3"
-    ),
+    val selectedModel: String = FreeModels.LING_FLASH_FIN,
+    val availableModels: List<String> = FreeModels.CHAIN,
     val isOnlineAiEnabled: Boolean = true,
     val apiKey: String = "",
     val autoConfirmThreshold: Float = 0.90f
