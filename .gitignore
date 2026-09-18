@@ -17,6 +17,10 @@
 local.properties
 .env
 debug.keystore
+my-upload-key.jks
+.release-store-password
+*.keystore
+*.jks
 .hermes/
 graphify-out/
 ViNote
