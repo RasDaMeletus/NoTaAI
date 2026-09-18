@@ -21,18 +21,20 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 const GOJEK_BASE = "https://goid.gojekapi.com";
 const GOJEK_CUSTOMER = "https://customer.gopayapi.com";
 
+// Header + credential set for namtxs/gopay-api (Gojek iOS client 4.88.0).
 const GOJEK_HEADERS: Record<string, string> = {
-  "Content-Type": "application/json",
-  "User-Agent": "okhttp/4.10.0",
-  "X-Platform": "Android",
-  "X-Uniqueid": "c6ad2e615cf54aa5",
-  "X-Appversion": "4.74.3",
-  "X-Appid": "com.gojek.app",
-  "X-User-Type": "customer",
-  "X-Deviceos": "Android,9",
-  "X-Phonemake": "samsung",
-  "X-Phonemodel": "samsung,SM-S901N",
+  "content-type": "application/json",
+  "x-appid": "com.go-jek.ios",
+  "x-phonemodel": "Apple, iPhone XS Max",
+  "user-agent": "Gojek/122076431 CFNetwork/1404.0.5 Darwin/22.3.0",
+  "x-phonemake": "Apple",
+  "x-deviceos": "iOS, 15.6.1",
+  "x-platform": "iOS",
+  "x-appversion": "4.88.0",
+  "x-signature": "1001",
   "Gojek-Country-Code": "ID",
+  "x-user-locale": "id_ID",
+  "accept": "*/*",
 };
 
 const GOJEK_CLIENT_ID = "gojek:consumer:app";
@@ -215,8 +217,7 @@ async function gopayLoginRequest(phone: string): Promise<Response> {
         client_id: GOJEK_CLIENT_ID,
         client_secret: GOJEK_CLIENT_SECRET,
         country_code: "+62",
-        login_type: "",
-        magic_link_ref: "",
+        magic_link_ref: null,
         phone_number: phone,
       }),
     });
@@ -260,9 +261,8 @@ async function gopayVerifyOtp(
       body: JSON.stringify({
         client_id: GOJEK_CLIENT_ID,
         client_secret: GOJEK_CLIENT_SECRET,
-        data: { otp: otp, otp_token: otpToken },
+        data: { otp_token: otpToken, otp: otp },
         grant_type: "otp",
-        scopes: [],
       }),
     });
 
@@ -632,7 +632,7 @@ async function ovoGetBalance(
       method: "GET",
       headers: {
         ...OVO_HEADERS,
-        Authorization: *** accessToken}`,
+        Authorization: `Bearer ${accessToken}`,
         "device-id": deviceId,
       },
     });

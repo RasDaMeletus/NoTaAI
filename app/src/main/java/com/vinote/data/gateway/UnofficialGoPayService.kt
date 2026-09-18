@@ -41,24 +41,6 @@ class UnofficialGoPayService(
         // Supabase secret and injects it server-side.
         private const val BASE_URL_GOID = "https://goid.gojekapi.com"
         private const val BASE_URL_CUSTOMER = "https://customer.gopayapi.com"
-
-        // Header set mirrors namtxs/gopay-api buildHeaders() exactly.
-        // Identifiers that must be stable per install are generated at runtime.
-        private val GOJEK_HEADERS = mapOf(
-            "Content-Type" to "application/json",
-            "Accept" to "*/*",
-            "User-Agent" to "Gojek/122076431 CFNetwork/1404.0.5 Darwin/22.3.0",
-            "X-Platform" to "iOS",
-            "X-Appversion" to "4.88.0",
-            "X-Appid" to "com.go-jek.ios",
-            "X-User-Type" to "customer",
-            "X-User-Locale" to "id_ID",
-            "X-Deviceos" to "iOS, 15.6.1",
-            "X-Phonemake" to "Apple",
-            "X-Phonemodel" to "Apple, iPhone XS Max",
-            "X-Signature" to "1001",
-            "Gojek-Country-Code" to "ID"
-        )
     }
 
     private val client = OkHttpClient.Builder()

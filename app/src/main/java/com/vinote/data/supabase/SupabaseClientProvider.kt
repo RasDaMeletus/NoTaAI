@@ -10,22 +10,24 @@ import io.github.jan.supabase.storage.Storage
 
 /**
  * Provides a singleton Supabase client for the app.
- * URL and anon key are read from local.properties; if missing, the provider
- * falls back to a stub that throws on use so the app still compiles.
+ * URL and anon key are compiled in from .env via the secrets Gradle plugin
+ * (BuildConfig.SUPABASE_URL / BuildConfig.SUPABASE_ANON_KEY), which is the
+ * correct place for the public, RLS-protected publishable key. Private keys
+ * (service_role, OpenRouter, Midtrans) never enter the APK.
  */
 class SupabaseClientProvider(private val appContext: Context) {
 
     val isConfigured: Boolean by lazy {
-        val url = readLocalProperty("supabase.url")
-        val key = readLocalProperty("supabase.anon.key")
+        val url = supabaseUrl
+        val key = supabaseAnonKey
         !url.isNullOrBlank() && !key.isNullOrBlank() &&
                 !url.contains("placeholder") && !key.contains("placeholder")
     }
 
     val clientOrNull: SupabaseClient? by lazy {
         try {
-            val url = readLocalProperty("supabase.url")
-            val key = readLocalProperty("supabase.anon.key")
+            val url = supabaseUrl
+            val key = supabaseAnonKey
             if (url.isNullOrBlank() || key.isNullOrBlank() || url.contains("placeholder")) {
                 null
             } else {
@@ -49,7 +51,7 @@ class SupabaseClientProvider(private val appContext: Context) {
         get() = clientOrNull ?: throw IllegalStateException("Supabase is not configured or failed to initialize.")
 
     val supabaseUrl: String
-        get() = readLocalProperty("supabase.url") ?: ""
+        get() = com.example.BuildConfig.SUPABASE_URL ?: ""
 
     val supabaseFunctionsUrl: String
         get() = "${supabaseUrl.trimEnd('/')}/functions/v1"
@@ -63,16 +65,5 @@ class SupabaseClientProvider(private val appContext: Context) {
         get() = supabaseUrl.startsWith("http://") || supabaseUrl.startsWith("https://")
 
     val supabaseAnonKey: String
-        get() = readLocalProperty("supabase.anon.key") ?: ""
-
-    private fun readLocalProperty(name: String): String? = try {
-        val props = java.util.Properties()
-        val file = java.io.File(appContext.filesDir.parentFile, "local.properties")
-        if (file.exists()) {
-            file.inputStream().use { props.load(it) }
-        }
-        props.getProperty(name)
-    } catch (e: Exception) {
-        null
-    }
+        get() = com.example.BuildConfig.SUPABASE_ANON_KEY ?: ""
 }

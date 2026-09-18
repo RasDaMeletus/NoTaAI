@@ -32,14 +32,10 @@ class UnofficialOvoService(
 
     companion object {
         private const val TAG = "UnofficialOvo"
-        // From namtxs/ovoid-API
+        // From namtxs/ovoid-API. All OVO calls route through the gateway-proxy
+        // Edge Function, which holds the correct iOS header set and the RSA
+        // login secrets; the app only needs the base URL for reporting.
         private const val BASE_URL = "https://api.ovo.id"
-        private val OVO_HEADERS = mapOf(
-            "Content-Type" to "application/json",
-            "User-Agent" to "OVO-Android/3.54.0",
-            "X-Platform" to "Android",
-            "X-DeviceOS" to "Android,11"
-        )
     }
 
     private val client = OkHttpClient.Builder()
