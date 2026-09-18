@@ -252,7 +252,7 @@ fun ScanReceiptScreen(
                     Spacer(modifier = Modifier.width(6.dp))
                     Text(
                         text = if (!hasCameraPermission) "⚠️ Camera Permission Required"
-                        else if (aiEngineStatus.isOnline) "⚡ Hugging Face OCR Active (${aiEngineStatus.connectionType})"
+                        else if (aiEngineStatus.isOnline) "⚡ OpenRouter OCR Active (${aiEngineStatus.connectionType})"
                         else "🔒 100% On-Device OCR Engine",
                         fontSize = 11.sp,
                         fontWeight = FontWeight.SemiBold,

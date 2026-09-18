@@ -617,7 +617,7 @@ fun VoiceInputScreen(
                                     )
                                 Spacer(modifier = Modifier.width(4.dp))
                                 Text(
-                                    text = if (aiEngineStatus.isOnline) "⚡ Hugging Face NLP" else "🔒 On-Device NLP",
+                                    text = if (aiEngineStatus.isOnline) "⚡ OpenRouter NLP" else "🔒 On-Device NLP",
                                     fontSize = 11.sp,
                                     fontWeight = FontWeight.Bold,
                                     color = Color(0xFF0F6E3B)

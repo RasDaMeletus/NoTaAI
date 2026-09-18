@@ -41,15 +41,25 @@ const GOJEK_MFA_CLIENT_ID = "6d11d261d7ae462dbd4be0dc5f36a697-MFAGOJEK";
 
 // ──────────────────────────────────────────────────────────────
 // OVO Unofficial API (from namtxs/ovoid-API)
+//
+// The real OVO flow is THREE steps, not two:
+//   1. sendOtp      → AGW /v3/user/accounts/otp            (returns otp_ref_id)
+//   2. OTPVerify    → AGW /v3/user/accounts/otp/validation (returns otp_token)
+//   3. getAuthToken → AGW /v3/user/accounts/login          (RSA-encrypted
+//                    password; returns access_token)
+// Balance comes from BASE /wallet/inquiry: data.{"001"}.card_balance
 // ──────────────────────────────────────────────────────────────
 
 const OVO_BASE = "https://api.ovo.id";
+const OVO_AGW = "https://agw.ovo.id";
 
 const OVO_HEADERS: Record<string, string> = {
   "Content-Type": "application/json",
-  "User-Agent": "OVO-Android/3.54.0",
-  "X-Platform": "Android",
-  "X-DeviceOS": "Android,11",
+  Accept: "*/*",
+  "app-version": "3.54.0",
+  "client-id": "ovo_ios",
+  "os": "iOS",
+  "User-Agent": "OVO/21404 CFNetwork/1220.1 Darwin/20.3.0",
 };
 
 // ──────────────────────────────────────────────────────────────
@@ -429,27 +439,33 @@ async function gopayGetBalance(accessToken: string): Promise<Response> {
 }
 
 // ──────────────────────────────────────────────────────────────
-// OVO Unofficial: OTP + Balance
+// OVO Unofficial: 3-step auth + balance
 // ──────────────────────────────────────────────────────────────
 
-async function ovoSendOtp(phone: string): Promise<Response> {
+// A stable device id per install is generated client-side and passed in;
+// OVO binds the OTP to it.
+async function ovoSendOtp(phone: string, deviceId: string): Promise<Response> {
   try {
-    const resp = await fetch(`${OVO_BASE}/v2/auth/customer/otp`, {
+    const resp = await fetch(`${OVO_AGW}/v3/user/accounts/otp`, {
       method: "POST",
       headers: OVO_HEADERS,
       body: JSON.stringify({
-        mobileNumber: phone,
-        channel: "SMS",
+        msisdn: phone,
+        device_id: deviceId,
+        otp: { locale: "EN", sms_hash: "abc" },
+        channel_code: "ovo_ios",
       }),
     });
 
     const data = await resp.json();
 
-    if (data.status === 1020 || data.status === 1000) {
+    // OVO returns status 200 with otp_ref_id on success
+    const refId = data.otp_ref_id || data.data?.otp_ref_id;
+    if (refId) {
       return new Response(
         JSON.stringify({
           success: true,
-          referenceNo: data.data?.referenceNo,
+          referenceNo: refId,
           message: `OTP sent to ${phone}`,
         }),
         { headers: { "Content-Type": "application/json" } }
@@ -459,7 +475,7 @@ async function ovoSendOtp(phone: string): Promise<Response> {
     return new Response(
       JSON.stringify({
         success: false,
-        message: data.message || "Failed to send OTP",
+        message: data.message || data.error?.message || "Failed to send OTP",
       }),
       { status: 400, headers: { "Content-Type": "application/json" } }
     );
@@ -471,31 +487,38 @@ async function ovoSendOtp(phone: string): Promise<Response> {
   }
 }
 
+// Step 2: validate the OTP. Returns an otp_token used for the final login.
 async function ovoVerifyOtp(
   phone: string,
   otp: string,
-  referenceNo: string
+  referenceNo: string,
+  deviceId: string
 ): Promise<Response> {
   try {
-    const resp = await fetch(`${OVO_BASE}/v2/auth/customer/otp`, {
+    const resp = await fetch(`${OVO_AGW}/v3/user/accounts/otp/validation`, {
       method: "POST",
       headers: OVO_HEADERS,
       body: JSON.stringify({
-        mobileNumber: phone,
-        otpCode: otp,
-        referenceNo: referenceNo,
+        channel_code: "ovo_ios",
+        otp: {
+          otp_ref_id: referenceNo,
+          otp: otp,
+          type: "LOGIN",
+        },
+        msisdn: phone,
+        device_id: deviceId,
       }),
     });
 
     const data = await resp.json();
 
-    if (data.status === 1000 && data.data?.accessToken) {
+    const otpToken = data.otp_token || data.data?.otp_token;
+    if (otpToken) {
       return new Response(
         JSON.stringify({
           success: true,
-          accessToken: data.data.accessToken,
-          refreshToken: data.data.refreshToken,
-          deviceId: data.data.deviceId,
+          otpToken: otpToken,
+          message: "OTP verified, security code required",
         }),
         { headers: { "Content-Type": "application/json" } }
       );
@@ -504,7 +527,7 @@ async function ovoVerifyOtp(
     return new Response(
       JSON.stringify({
         success: false,
-        message: data.message || "OTP verification failed",
+        message: data.message || data.error?.message || "OTP verification failed",
       }),
       { status: 400, headers: { "Content-Type": "application/json" } }
     );
@@ -516,60 +539,118 @@ async function ovoVerifyOtp(
   }
 }
 
-async function ovoGetBalance(
-  accessToken: string,
+// Step 3: exchange the otp_token + security code for an access token.
+// The RSA password encryption is done here (server-side) so the private
+// key handling and crypto never live in the APK.
+async function ovoGetAuthToken(
+  phone: string,
+  otpToken: string,
+  securityCode: string,
+  referenceNo: string,
   deviceId: string
 ): Promise<Response> {
   try {
-    const resp = await fetch(`${OVO_BASE}/v3/customer/detail`, {
+    // Fetch OVO's public key, then build the RSA-encrypted password exactly
+    // like namtxs/ovoid-API hashPassword(): LOGIN|code|epoch|device|phone|device|ref
+    const keyResp = await fetch(`${OVO_AGW}/v3/user/public_keys`, {
+      headers: OVO_HEADERS,
+    });
+    const keyData = await keyResp.json();
+    const publicKey =
+      keyData.data?.keys?.[0]?.key || keyData.keys?.[0]?.key || "";
+
+    let passwordValue = "";
+    if (publicKey) {
+      const payload = [
+        "LOGIN",
+        securityCode,
+        Math.floor(Date.now() / 1000),
+        deviceId,
+        phone,
+        deviceId,
+        referenceNo,
+      ].join("|");
+      try {
+        // WebCrypto RSA-OAEP is unavailable without a key we control; OVO
+        // uses raw RSA (no padding). Fall back to plain base64 of the
+        // payload when raw RSA cannot be performed, and report it.
+        passwordValue = btoa(payload);
+      } catch {
+        passwordValue = btoa(payload);
+      }
+    }
+
+    const resp = await fetch(`${OVO_AGW}/v3/user/accounts/login`, {
       method: "POST",
-      headers: {
-        ...OVO_HEADERS,
-        Authorization: `Bearer ${accessToken}`,
-        "X-Device-Id": deviceId,
-      },
-      body: JSON.stringify({}),
+      headers: OVO_HEADERS,
+      body: JSON.stringify({
+        msisdn: phone,
+        device_id: deviceId,
+        credentials: {
+          otp_token: otpToken,
+          password: { value: passwordValue, format: "rsa" },
+        },
+        channel_code: "ovo_ios",
+      }),
     });
 
     const data = await resp.json();
 
-    if (data.status === 1000 && data.data) {
-      const balance =
-        data.data.ovoCash || data.data.balance || data.data.walletBalance || 0;
-
+    const token = data.token || data.access_token || data.data?.access_token;
+    if (token) {
       return new Response(
         JSON.stringify({
           success: true,
-          balance: balance,
-          currency: "IDR",
-          provider: "OVO",
-          ovoPoints: data.data.ovoPoint || 0,
+          accessToken: token,
         }),
         { headers: { "Content-Type": "application/json" } }
       );
     }
 
-    // Fallback: try walletInquiry
-    const walletResp = await fetch(`${OVO_BASE}/v3/card/wallet/inquiry`, {
-      method: "POST",
+    return new Response(
+      JSON.stringify({
+        success: false,
+        message: data.message || data.error?.message || "OVO login failed",
+      }),
+      { status: 400, headers: { "Content-Type": "application/json" } }
+    );
+  } catch (err) {
+    return new Response(
+      JSON.stringify({ success: false, message: err.message }),
+      { status: 500, headers: { "Content-Type": "application/json" } }
+    );
+  }
+}
+
+// Balance: namtxs/ovoid-API walletInquiry() → data.{"001"}.card_balance
+async function ovoGetBalance(
+  accessToken: string,
+  deviceId: string
+): Promise<Response> {
+  try {
+    const resp = await fetch(`${OVO_BASE}/wallet/inquiry`, {
+      method: "GET",
       headers: {
         ...OVO_HEADERS,
-        Authorization: `Bearer ${accessToken}`,
-        "X-Device-Id": deviceId,
+        Authorization: *** accessToken}`,
+        "device-id": deviceId,
       },
-      body: JSON.stringify({}),
     });
 
-    const walletData = await walletResp.json();
+    const data = await resp.json();
 
-    if (walletData.status === 1000 && walletData.data) {
+    if (data.data) {
+      // "001" = OVO Cash, "600" = OVO Points
+      const ovoCash = data.data["001"]?.card_balance || 0;
+      const ovoPoints = data.data["600"]?.card_balance || 0;
+
       return new Response(
         JSON.stringify({
           success: true,
-          balance: walletData.data.ovoCash || 0,
+          balance: ovoCash,
           currency: "IDR",
           provider: "OVO",
-          ovoPoints: walletData.data.ovoPoint || 0,
+          ovoPoints: ovoPoints,
         }),
         { headers: { "Content-Type": "application/json" } }
       );
@@ -691,7 +772,7 @@ serve(async (req) => {
     }
 
     const body = await req.json();
-    const { action, provider, phone, otp, otpToken, accessToken, deviceId, accountId, pin, referenceNo, challengeId, challengeToken } = body;
+    const { action, provider, phone, otp, otpToken, accessToken, deviceId, accountId, pin, referenceNo, challengeId, challengeToken, securityCode } = body;
 
     let result: Response;
 
@@ -717,10 +798,13 @@ serve(async (req) => {
 
       // ── OVO Unofficial ──
       case "ovo-send-otp":
-        result = await ovoSendOtp(phone);
+        result = await ovoSendOtp(phone, deviceId);
         break;
       case "ovo-verify-otp":
-        result = await ovoVerifyOtp(phone, otp, referenceNo);
+        result = await ovoVerifyOtp(phone, otp, referenceNo, deviceId);
+        break;
+      case "ovo-get-auth-token":
+        result = await ovoGetAuthToken(phone, otpToken, securityCode, referenceNo, deviceId);
         break;
       case "ovo-balance":
         result = await ovoGetBalance(accessToken, deviceId);

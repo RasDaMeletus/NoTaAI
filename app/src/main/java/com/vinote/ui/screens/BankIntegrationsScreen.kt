@@ -18,6 +18,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
@@ -26,6 +27,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
+import com.vinote.data.gateway.EwalletCatalog
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.AccountBalance
@@ -121,6 +123,7 @@ fun BankIntegrationsScreen(
     var newAccountNumber by remember { mutableStateOf("•••• 9988") }
     var newInitialBalanceText by remember { mutableStateOf("1500000") }
     var newAccountType by remember { mutableStateOf("Bank") }
+    var newEwalletName by remember { mutableStateOf(EwalletCatalog.options.first().displayName) }
 
     val filteredList = bankAccounts.filter { account ->
         when (selectedTab) {
@@ -517,23 +520,155 @@ fun BankIntegrationsScreen(
                             color = ViNoteTextSecondary
                         )
 
-                        val bankOptions = listOf(
-                            "Bank Central Asia (BCA)" to "Bank",
-                            "Bank Mandiri (Livin')" to "Bank",
-                            "Bank BNI" to "Bank",
-                            "Bank BRI (BRImo)" to "Bank",
-                            "Bank Jago" to "Bank",
-                            "SeaBank" to "Bank",
-                            "GoPay" to "E-Wallet",
-                            "OVO" to "E-Wallet",
-                            "DANA" to "E-Wallet",
-                            "ShopeePay" to "E-Wallet"
-                        )
+                        // Account type tabs: banks are a free-text list, e-wallets
+                        // pick from the supported providers so linking can run.
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(50))
+                                .background(ViNoteSurfaceContainerLow)
+                                .padding(4.dp)
+                        ) {
+                            listOf("Bank" to "Bank", "E-Wallet" to "E-Wallet").forEach { (label, type) ->
+                                val isSelected = newAccountType == type
+                                Box(
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .clip(RoundedCornerShape(50))
+                                        .background(if (isSelected) ViNotePrimary else Color.Transparent)
+                                        .clickable {
+                                            newAccountType = type
+                                            // Reset selection so the confirm button
+                                            // uses a valid name for the new type.
+                                            newBankName = if (type == "E-Wallet") {
+                                                newEwalletName.ifBlank { EwalletCatalog.options.first().displayName }
+                                            } else {
+                                                "Bank Central Asia (BCA)"
+                                            }
+                                        }
+                                        .padding(vertical = 8.dp),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Text(
+                                        text = label,
+                                        fontSize = 13.sp,
+                                        fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
+                                        color = if (isSelected) Color.White else ViNoteTextSecondary
+                                    )
+                                }
+                            }
+                        }
+
+                        if (newAccountType == "Bank") {
+                            val bankOptions = listOf(
+                                "Bank Central Asia (BCA)" to "Bank",
+                                "Bank Mandiri (Livin')" to "Bank",
+                                "Bank BNI" to "Bank",
+                                "Bank BRI (BRImo)" to "Bank",
+                                "Bank Jago" to "Bank",
+                                "SeaBank" to "Bank"
+                            )
+                            bankOptions.forEach { (name, _) ->
+                                val isSelected = newBankName == name
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .clip(RoundedCornerShape(12.dp))
+                                        .background(if (isSelected) ViNotePrimary.copy(alpha = 0.12f) else ViNoteSurfaceContainerLowest)
+                                        .border(
+                                            1.dp,
+                                            if (isSelected) ViNotePrimary else Color(0xFFDDE3EA),
+                                            RoundedCornerShape(12.dp)
+                                        )
+                                        .clickable { newBankName = name }
+                                        .padding(horizontal = 14.dp, vertical = 12.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Box(
+                                        modifier = Modifier
+                                            .size(28.dp)
+                                            .clip(CircleShape)
+                                            .background(Color(android.graphics.Color.parseColor("#003893"))),
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Default.AccountBalance,
+                                            contentDescription = null,
+                                            tint = Color.White,
+                                            modifier = Modifier.size(16.dp)
+                                        )
+                                    }
+                                    Spacer(modifier = Modifier.width(10.dp))
+                                    Text(
+                                        text = name,
+                                        fontSize = 13.sp,
+                                        fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
+                                        color = ViNoteTextPrimary
+                                    )
+                                }
+                            }
+                        } else {
+                            // E-wallet picker: only providers this app can link.
+                            EwalletCatalog.options.forEach { option ->
+                                val isSelected = newBankName == option.displayName
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .clip(RoundedCornerShape(12.dp))
+                                        .background(if (isSelected) ViNotePrimary.copy(alpha = 0.12f) else ViNoteSurfaceContainerLowest)
+                                        .border(
+                                            1.dp,
+                                            if (isSelected) ViNotePrimary else Color(0xFFDDE3EA),
+                                            RoundedCornerShape(12.dp)
+                                        )
+                                .clickable {
+                                    newBankName = option.displayName
+                                    newEwalletName = option.displayName
+                                }
+                                        .padding(horizontal = 14.dp, vertical = 12.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Box(
+                                        modifier = Modifier
+                                            .size(28.dp)
+                                            .clip(CircleShape)
+                                            .background(Color(android.graphics.Color.parseColor(option.brandColorHex))),
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Default.AccountBalanceWallet,
+                                            contentDescription = null,
+                                            tint = Color.White,
+                                            modifier = Modifier.size(16.dp)
+                                        )
+                                    }
+                                    Spacer(modifier = Modifier.width(10.dp))
+                                    Column {
+                                        Text(
+                                            text = option.displayName,
+                                            fontSize = 13.sp,
+                                            fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
+                                            color = ViNoteTextPrimary
+                                        )
+                                        Text(
+                                            text = "OTP linking supported",
+                                            fontSize = 10.sp,
+                                            color = ViNoteTextSecondary
+                                        )
+                                    }
+                                }
+                            }
+                        }
 
                         OutlinedTextField(
                             value = newAccountNumber,
                             onValueChange = { newAccountNumber = it },
-                            label = { Text("Account Number / Phone", color = ViNoteTextSecondary) },
+                            label = {
+                                Text(
+                                    if (newAccountType == "E-Wallet") "Phone Number (e.g. 0812...)" else "Account Number",
+                                    color = ViNoteTextSecondary
+                                )
+                            },
                             textStyle = androidx.compose.material3.LocalTextStyle.current.copy(color = ViNoteTextPrimary),
                             singleLine = true,
                             shape = RoundedCornerShape(12.dp),
@@ -551,42 +686,65 @@ fun BankIntegrationsScreen(
                                 .testTag("bank_dialog_account_field")
                         )
 
-                        OutlinedTextField(
-                            value = newInitialBalanceText,
-                            onValueChange = { newInitialBalanceText = it.filter { ch -> ch.isDigit() } },
-                            label = { Text("Initial Balance (Rp)", color = ViNoteTextSecondary) },
-                            textStyle = androidx.compose.material3.LocalTextStyle.current.copy(color = ViNoteTextPrimary),
-                            singleLine = true,
-                            shape = RoundedCornerShape(12.dp),
-                            colors = OutlinedTextFieldDefaults.colors(
-                                focusedTextColor = ViNoteTextPrimary,
-                                unfocusedTextColor = ViNoteTextPrimary,
-                                focusedBorderColor = ViNotePrimary,
-                                unfocusedBorderColor = Color(0xFFDDE3EA),
-                                focusedContainerColor = ViNoteSurfaceContainerLowest,
-                                unfocusedContainerColor = ViNoteSurfaceContainerLowest,
-                                cursorColor = ViNotePrimary
-                            ),
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .testTag("bank_dialog_balance_field")
-                        )
+                        // Banks need a starting balance the user enters manually;
+                        // e-wallets report their real balance after linking.
+                        if (newAccountType == "Bank") {
+                            OutlinedTextField(
+                                value = newInitialBalanceText,
+                                onValueChange = { newInitialBalanceText = it.filter { ch -> ch.isDigit() } },
+                                label = { Text("Initial Balance (Rp)", color = ViNoteTextSecondary) },
+                                textStyle = androidx.compose.material3.LocalTextStyle.current.copy(color = ViNoteTextPrimary),
+                                singleLine = true,
+                                shape = RoundedCornerShape(12.dp),
+                                colors = OutlinedTextFieldDefaults.colors(
+                                    focusedTextColor = ViNoteTextPrimary,
+                                    unfocusedTextColor = ViNoteTextPrimary,
+                                    focusedBorderColor = ViNotePrimary,
+                                    unfocusedBorderColor = Color(0xFFDDE3EA),
+                                    focusedContainerColor = ViNoteSurfaceContainerLowest,
+                                    unfocusedContainerColor = ViNoteSurfaceContainerLowest,
+                                    cursorColor = ViNotePrimary
+                                ),
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .testTag("bank_dialog_balance_field")
+                            )
+                        }
                     }
                 },
                 confirmButton = {
                     TextButton(
                         onClick = {
-                            val bal = newInitialBalanceText.toLongOrNull() ?: 1000000L
-                            viewModel.connectNewBank(
-                                bankName = newBankName,
-                                accountNumber = newAccountNumber,
-                                balance = bal,
-                                type = newAccountType
-                            )
-                            showAddAccountDialog = false
+                            if (newAccountType == "E-Wallet") {
+                                // Create the wallet row, then start the OTP flow
+                                // against it. The dialog hands off to the OTP
+                                // dialog, which finishes the linking.
+                                showAddAccountDialog = false
+                                viewModel.linkNewEwallet(newBankName, newAccountNumber)
+                                activeLinkingWalletId = null
+                                activeLinkingWalletName = newBankName
+                                inputPhoneNumber = newAccountNumber
+                                inputOtpCode = ""
+                                activeLinkingReferenceId = ""
+                                viewModel.resetEwalletLinkingState()
+                                showOtpDialog = true
+                            } else {
+                                val bal = newInitialBalanceText.toLongOrNull() ?: 1000000L
+                                viewModel.connectNewBank(
+                                    bankName = newBankName,
+                                    accountNumber = newAccountNumber,
+                                    balance = bal,
+                                    type = newAccountType
+                                )
+                                showAddAccountDialog = false
+                            }
                         }
                     ) {
-                        Text("Connect & Link", color = ViNotePrimary, fontWeight = FontWeight.Bold)
+                        Text(
+                            if (newAccountType == "E-Wallet") "Send OTP & Link" else "Connect & Link",
+                            color = ViNotePrimary,
+                            fontWeight = FontWeight.Bold
+                        )
                     }
                 },
                 dismissButton = {

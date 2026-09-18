@@ -179,8 +179,15 @@ object ServiceModule {
     @Singleton
     fun provideEwalletUseCase(
         walletGatewayRepository: WalletGatewayRepository,
-        walletAccountDao: WalletAccountDao
-    ): EwalletUseCaseInterface = EwalletUseCaseImpl(walletGatewayRepository, walletAccountDao)
+        walletAccountDao: WalletAccountDao,
+        unofficialGoPayService: UnofficialGoPayService,
+        unofficialOvoService: UnofficialOvoService
+    ): EwalletUseCaseInterface = EwalletUseCaseImpl(
+        walletGatewayRepository,
+        walletAccountDao,
+        unofficialGoPayService,
+        unofficialOvoService
+    )
 
     @Provides
     @Singleton

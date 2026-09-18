@@ -21,7 +21,9 @@ interface EwalletUseCaseInterface {
 @Singleton
 class EwalletUseCaseImpl @Inject constructor(
     private val walletGatewayRepository: WalletGatewayRepository,
-    private val walletAccountDao: WalletAccountDao
+    private val walletAccountDao: WalletAccountDao,
+    private val unofficialGoPayService: com.vinote.data.gateway.UnofficialGoPayService,
+    private val unofficialOvoService: com.vinote.data.gateway.UnofficialOvoService
 ) : EwalletUseCaseInterface {
 
     private val _linkingState = MutableStateFlow<EwalletLinkingState>(EwalletLinkingState.Idle)
@@ -72,17 +74,47 @@ class EwalletUseCaseImpl @Inject constructor(
 
         _linkingState.value = EwalletLinkingState.VerifyingOtp(phoneNumber, provider.displayName)
 
-        // For DANA, the OTP flow completes via linkWalletAccount callback (no separate verify call)
-        // For GoPay/OVO, verification requires Edge Functions that aren't implemented yet
         val userId = walletGatewayRepository.getCanonicalUserId() ?: return EwalletLinkingState.Error("Not signed in")
         return try {
             val wallet = walletAccountDao.getWalletById(walletId, userId)
             val result = when (provider) {
-                PaymentGatewayService.Provider.GOPAY,
+                PaymentGatewayService.Provider.GOPAY -> {
+                    // GoPay: verify the OTP against the Edge Function, then
+                    // store the returned access token for later balance fetches.
+                    val otpToken = referenceId
+                    val authResult = unofficialGoPayService.verifyOtp(phoneNumber, otp, otpToken)
+                    if (authResult.isSuccess) {
+                        val auth = authResult.getOrThrow()
+                        if (auth.requiresMFA) {
+                            // PIN challenge — needs a separate UI step, not yet exposed.
+                            BalanceFetchResult.Error("GoPay memerlukan PIN. Verifikasi PIN belum tersedia di versi ini.")
+                        } else {
+                            BalanceFetchResult.Success(
+                                balance = 0L,
+                                provider = provider.displayName,
+                                accountId = phoneNumber,
+                                accessToken = auth.accessToken
+                            )
+                        }
+                    } else {
+                        BalanceFetchResult.Error(authResult.exceptionOrNull()?.message ?: "Verifikasi OTP GoPay gagal")
+                    }
+                }
                 PaymentGatewayService.Provider.OVO -> {
-                    // GoPay/OVO OTP verification requires Midtrans Edge Function (not yet implemented)
-                    // Return error indicating feature not available
-                    BalanceFetchResult.Error("OTP verification for ${provider.displayName} not yet implemented. Please use Midtrans integration.")
+                    // OVO: 3-step auth. verifyOtp here validates the OTP and
+                    // returns an intermediate token; the security-code login
+                    // step happens on the Edge Function side.
+                    val authResult = unofficialOvoService.verifyOtp(phoneNumber, otp, referenceId)
+                    if (authResult.isSuccess) {
+                        BalanceFetchResult.Success(
+                            balance = 0L,
+                            provider = provider.displayName,
+                            accountId = phoneNumber,
+                            accessToken = authResult.getOrThrow()
+                        )
+                    } else {
+                        BalanceFetchResult.Error(authResult.exceptionOrNull()?.message ?: "Verifikasi OTP OVO gagal")
+                    }
                 }
                 PaymentGatewayService.Provider.DANA -> {
                     // DANA uses direct OTP confirmation via linkWalletAccount - assume completed
@@ -95,7 +127,7 @@ class EwalletUseCaseImpl @Inject constructor(
                 is BalanceFetchResult.Success -> {
                     val updated = wallet?.copy(
                         isConnected = true,
-                        gatewayAccessToken = result.provider,
+                        gatewayAccessToken = result.accessToken ?: result.provider,
                         linkedAccountId = phoneNumber,
                         gatewayType = provider.displayName,
                         lastSyncTimestamp = System.currentTimeMillis()

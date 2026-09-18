@@ -93,8 +93,6 @@ fun SettingsScreen(
     var notificationsEnabled by remember { mutableStateOf(true) }
     val isBiometricEnabled by viewModel.isBiometricLockEnabled.collectAsState()
     var showClearHistoryDialog by remember { mutableStateOf(false) }
-    var showHfKeyDialog by remember { mutableStateOf(false) }
-    var hfApiKeyInput by remember { mutableStateOf("") }
 
     val syncStatus by viewModel.syncStatus.collectAsState()
     val syncSummary by viewModel.syncSummary.collectAsState()
@@ -162,7 +160,7 @@ fun SettingsScreen(
                 }
             }
 
-            // HYBRID AI & HUGGING FACE ENGINE
+            // HYBRID AI & OPENROUTER ENGINE
             item {
                 Column(modifier = Modifier.fillMaxWidth()) {
                     Text(
@@ -207,7 +205,7 @@ fun SettingsScreen(
                                         color = ViNoteTextPrimary
                                     )
                                     Text(
-                                        text = if (aiEngineStatus.isOnline) "Hugging Face Online ⚡ (${aiEngineStatus.connectionType})" else "On-Device Neural Engine 🔒 (Offline)",
+                                        text = if (aiEngineStatus.isOnline) "OpenRouter Cloud ⚡ (${aiEngineStatus.connectionType})" else "On-Device Neural Engine 🔒 (Offline)",
                                         fontSize = 13.sp,
                                         color = if (aiEngineStatus.isOnline) ViNoteMintSuccess else ViNoteTextSecondary
                                     )
@@ -219,7 +217,7 @@ fun SettingsScreen(
                         SettingsToggleRow(
                             icon = Icons.Default.NetworkWifi,
                             title = "Wi-Fi Only for Cloud AI",
-                            subtitle = "Route to Hugging Face only on Wi-Fi (Saves data)",
+                            subtitle = "Route cloud AI to OpenRouter only on Wi-Fi (Saves data)",
                             checked = wifiOnlyCloud,
                             onCheckedChange = {
                                 wifiOnlyCloud = it
@@ -237,14 +235,6 @@ fun SettingsScreen(
                                 forceOfflineMode = it
                                 viewModel.setForceOfflineMode(it)
                             }
-                        )
-
-                        // Hugging Face API Token config
-                        SettingsRow(
-                            icon = Icons.Default.Key,
-                            title = "Hugging Face API Token",
-                            subtitle = if (aiEngineStatus.hasApiKey) "Custom API Token Configured 🔑" else "Tap to set Hugging Face API Token",
-                            onClick = { showHfKeyDialog = true }
                         )
                     }
                 }
@@ -480,50 +470,6 @@ fun SettingsScreen(
                 Spacer(modifier = Modifier.height(30.dp))
             }
         }
-    }
-
-    if (showHfKeyDialog) {
-        AlertDialog(
-            onDismissRequest = { showHfKeyDialog = false },
-            title = {
-                Text(
-                    text = "Hugging Face API Token",
-                    fontWeight = FontWeight.Bold,
-                    color = ViNoteTextPrimary
-                )
-            },
-            text = {
-                Column {
-                    Text(
-                        text = "Enter your Hugging Face User Access Token (hf_...) to unlock high-accuracy cloud models (TrOCR & IndoBERT/Flan-T5) when connected to Wi-Fi. ViNote automatically falls back to 100% on-device offline models when offline or on mobile data.",
-                        color = ViNoteTextSecondary,
-                        fontSize = 13.sp
-                    )
-                    Spacer(modifier = Modifier.height(12.dp))
-                    OutlinedTextField(
-                        value = hfApiKeyInput,
-                        onValueChange = { hfApiKeyInput = it },
-                        placeholder = { Text("hf_xxxxxxxxxxxxxxxxxxxx") },
-                        modifier = Modifier.fillMaxWidth()
-                    )
-                }
-            },
-            confirmButton = {
-                TextButton(
-                    onClick = {
-                        viewModel.setHuggingFaceApiKey(hfApiKeyInput.trim())
-                        showHfKeyDialog = false
-                    }
-                ) {
-                    Text("Save Token", color = ViNotePrimary, fontWeight = FontWeight.Bold)
-                }
-            },
-            dismissButton = {
-                TextButton(onClick = { showHfKeyDialog = false }) {
-                    Text("Cancel", color = ViNoteTextSecondary)
-                }
-            }
-        )
     }
 
     if (showClearHistoryDialog) {

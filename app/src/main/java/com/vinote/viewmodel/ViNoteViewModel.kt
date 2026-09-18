@@ -38,6 +38,7 @@ import com.vinote.data.model.EwalletLinkingState
 import com.vinote.data.repository.WalletGatewayRepository
 import com.vinote.data.gateway.BalanceFetchResult
 import com.vinote.data.gateway.MidtransGatewayService
+import com.vinote.data.gateway.EwalletCatalog
 import com.vinote.data.gateway.PaymentGatewayService
 import com.vinote.data.gateway.UnofficialDanaService
 import com.vinote.data.gateway.UnofficialGoPayService
@@ -107,7 +108,7 @@ enum class ActivityFilter {
 
 class ViNoteViewModel(application: Application) : AndroidViewModel(application) {
     private val database = NoTaDatabase.getDatabase(application)
-    val authRepository: AuthRepository = AuthRepositoryImpl(SupabaseClientProvider(application))
+    val authRepository: AuthRepository = AuthRepositoryImpl(SupabaseClientProvider(application), application)
 
     private val cloudSynchronizer = NoTaCloudSynchronizer(
         transactionDao = database.transactionDao(),
@@ -180,10 +181,13 @@ class ViNoteViewModel(application: Application) : AndroidViewModel(application) 
 
     // Auth / Session State (Auth.js)
     val currentSession: StateFlow<UserSession?> = authRepository.currentSession
-    val isLoggedIn: StateFlow<Boolean> = authRepository.currentSession.map { it != null && it.isAuthenticated }
+    // Guest/offline sessions count as logged in: the app is fully usable
+    // without a Supabase account. isAuthenticated distinguishes cloud-synced
+    // from local-only, not "allowed in".
+    val isLoggedIn: StateFlow<Boolean> = authRepository.currentSession.map { it != null }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), true)
 
-    // Hybrid AI Processor (Hugging Face Online AI + On-Device Neural Engine)
+    // Hybrid AI Processor (OpenRouter Online AI + On-Device Neural Engine)
         val hybridAiProcessor = HybridAiProcessor(application)
         val aiEngineStatus: StateFlow<AiEngineStatus> = hybridAiProcessor.engineStatus
             .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), AiEngineStatus())
@@ -1013,10 +1017,6 @@ class ViNoteViewModel(application: Application) : AndroidViewModel(application) 
         _pendingTransaction.value = transaction
     }
 
-    fun setHuggingFaceApiKey(apiKey: String) {
-        showBanner("Hugging Face integration is no longer used in this build")
-    }
-
     fun setWifiOnlyForCloud(enabled: Boolean) {
         hybridAiProcessor.setWifiOnlyPreference(enabled)
         showBanner(if (enabled) "Cloud AI restricted to Wi-Fi 📶" else "Cloud AI allowed on Cellular 🌐")
@@ -1278,6 +1278,42 @@ class ViNoteViewModel(application: Application) : AndroidViewModel(application) 
 
     fun resetEwalletLinkingState() {
         _ewalletLinkingState.value = EwalletLinkingState.Idle
+    }
+
+    /**
+     * Start linking an e-wallet that is not yet saved in the database.
+     *
+     * The add-account dialog lets the user pick from [EwalletCatalog], so a
+     * new wallet row is created first and then the OTP flow runs against it.
+     * This keeps a single code path with the per-wallet "Link Account" button.
+     */
+    fun linkNewEwallet(displayName: String, phoneNumber: String) {
+        val provider = EwalletCatalog.providerFor(displayName) ?: run {
+            _ewalletLinkingState.value = EwalletLinkingState.Error("$displayName is not supported")
+            return
+        }
+
+        viewModelScope.launch {
+            val newId = "bank_${System.currentTimeMillis()}"
+            val newWallet = WalletAccountEntity(
+                id = newId,
+                userId = activeUserIdOrGuest,
+                name = displayName,
+                type = WalletType.EWALLET,
+                calculatedBalance = 0L,
+                providerReportedBalance = 0L,
+                isAutoDetectEnabled = true,
+                iconColorHex = EwalletCatalog.options
+                    .firstOrNull { it.displayName == displayName }?.brandColorHex ?: "#118EEA",
+                accountNumber = phoneNumber,
+                isConnected = false,
+                lastSyncTimestamp = System.currentTimeMillis()
+            )
+            repository.insertWallet(newWallet)
+
+            // Hand off to the same OTP flow the per-wallet button uses.
+            sendEwalletOtp(newId, phoneNumber)
+        }
     }
 
     fun fetchEwalletBalance(walletId: String) {
@@ -1587,7 +1623,7 @@ class ViNoteViewModel(application: Application) : AndroidViewModel(application) 
         }
     }
 
-    // Voice Input & Hybrid NLP Processing (Hugging Face + On-Device NLP)
+    // Voice Input & Hybrid NLP Processing (OpenRouter + On-Device NLP)
     fun setVoiceTranscript(text: String) {
         _voiceTranscript.value = text
         viewModelScope.launch {
