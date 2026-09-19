@@ -22,6 +22,8 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -82,6 +84,7 @@ import com.vinote.data.model.ChatMessage
 import com.vinote.data.model.NotaBaseColor
 import com.vinote.data.model.NotaEyeState
 import com.vinote.ui.components.FormatUtils
+import com.vinote.ui.components.MarkdownText
 import com.vinote.ui.components.NotaAvatar
 import com.vinote.ui.theme.ViNoteMintSuccess
 import com.vinote.ui.theme.ViNoteOnPrimary
@@ -100,6 +103,7 @@ import com.vinote.ui.theme.ViNoteTextSecondary
 import com.vinote.ui.theme.ViNoteWarmYellow
 import com.vinote.viewmodel.ViNoteViewModel
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun NotaAssistantScreen(
     viewModel: ViNoteViewModel,
@@ -330,49 +334,39 @@ fun NotaAssistantScreen(
 
                     Spacer(modifier = Modifier.height(28.dp))
 
-                    // Quick Action Chips (Pill shape, 46dp min height)
-                    Column(
+                    // Quick Action Chips (Pill shape, 46dp min height).
+                    // FlowRow lets chips wrap to the next line on narrow
+                    // screens instead of squeezing their labels.
+                    FlowRow(
                         modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.CenterHorizontally),
                         verticalArrangement = Arrangement.spacedBy(10.dp),
-                        horizontalAlignment = Alignment.CenterHorizontally
+                        maxItemsInEachRow = 2
                     ) {
-                        Row(
-                            horizontalArrangement = Arrangement.spacedBy(8.dp),
-                            modifier = Modifier.fillMaxWidth(),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            HeroQuickChip(
-                                icon = Icons.Default.Payments,
-                                label = "Can I afford this?",
-                                modifier = Modifier.weight(1f),
-                                onClick = { viewModel.sendChatMessage("Can I afford dinner tonight?") }
-                            )
-                            HeroQuickChip(
-                                icon = Icons.Default.QueryStats,
-                                label = "Where did my money go?",
-                                modifier = Modifier.weight(1.1f),
-                                onClick = { viewModel.sendChatMessage("Where did my money go?") }
-                            )
-                        }
-
-                        Row(
-                            horizontalArrangement = Arrangement.spacedBy(8.dp),
-                            modifier = Modifier.fillMaxWidth(),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            HeroQuickChip(
-                                icon = Icons.Default.Savings,
-                                label = "Help me save",
-                                modifier = Modifier.weight(1f),
-                                onClick = { viewModel.sendChatMessage("Help me save money") }
-                            )
-                            HeroQuickChip(
-                                icon = Icons.Default.TrackChanges,
-                                label = "Check Safe Money",
-                                modifier = Modifier.weight(1.1f),
-                                onClick = { viewModel.sendChatMessage("What is my safe money?") }
-                            )
-                        }
+                        HeroQuickChip(
+                            icon = Icons.Default.Payments,
+                            label = "Can I afford this?",
+                            modifier = Modifier.weight(1f),
+                            onClick = { viewModel.sendChatMessage("Can I afford dinner tonight?") }
+                        )
+                        HeroQuickChip(
+                            icon = Icons.Default.QueryStats,
+                            label = "Where did my money go?",
+                            modifier = Modifier.weight(1.1f),
+                            onClick = { viewModel.sendChatMessage("Where did my money go?") }
+                        )
+                        HeroQuickChip(
+                            icon = Icons.Default.Savings,
+                            label = "Help me save",
+                            modifier = Modifier.weight(1f),
+                            onClick = { viewModel.sendChatMessage("Help me save money") }
+                        )
+                        HeroQuickChip(
+                            icon = Icons.Default.TrackChanges,
+                            label = "Check Safe Money",
+                            modifier = Modifier.weight(1.1f),
+                            onClick = { viewModel.sendChatMessage("What is my safe money?") }
+                        )
                     }
                 }
             } else {
@@ -622,6 +616,7 @@ private fun HeroQuickChip(
     }
 }
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun TalkToNotaBubble(
     message: ChatMessage,
@@ -692,14 +687,16 @@ private fun TalkToNotaBubble(
         ) {
             Column {
                 Text(
-                    text = message.text,
-                    fontSize = 15.sp,
+                    text = MarkdownText.parse(message.text, baseFontSize = 15.sp),
                     color = if (isUser) Color.White else ViNoteTextPrimary,
                     lineHeight = 22.sp
                 )
 
-                // Contextual Structured Financial Card if message answers financial status
-                if (!isUser && (message.text.contains("Safe Money", ignoreCase = true) || message.text.contains("Uang Aman", ignoreCase = true))) {
+                // Contextual Structured Financial Card if message answers financial status.
+                // Match on the marker-stripped text so a bolded "Uang Aman"
+                // inside **...** still triggers the card.
+                val plainText = remember(message.text) { MarkdownText.plain(message.text) }
+                if (!isUser && (plainText.contains("Safe Money", ignoreCase = true) || plainText.contains("Uang Aman", ignoreCase = true))) {
                     Spacer(modifier = Modifier.height(10.dp))
                     StructuredFinancialCard(
                         title = "Guilt-Free Spending (Uang Aman)",
@@ -709,7 +706,7 @@ private fun TalkToNotaBubble(
                         badgeColor = ViNoteMintSuccess.copy(alpha = 0.2f),
                         badgeTextColor = Color(0xFF00796B)
                     )
-                } else if (!isUser && (message.text.contains("spent", ignoreCase = true) || message.text.contains("Food", ignoreCase = true) || message.text.contains("habis", ignoreCase = true))) {
+                } else if (!isUser && (plainText.contains("spent", ignoreCase = true) || plainText.contains("Food", ignoreCase = true) || plainText.contains("habis", ignoreCase = true))) {
                     Spacer(modifier = Modifier.height(10.dp))
                     StructuredFinancialCard(
                         title = "Today's Total Expenditure",
@@ -723,11 +720,14 @@ private fun TalkToNotaBubble(
             }
         }
 
-        // Quick action chips below NoTa messages
+        // Quick action chips below NoTa messages.
+        // FlowRow wraps to the next line on narrow screens instead of
+        // overflowing the bubble width.
         if (!isUser && message.quickChips.isNotEmpty()) {
             Spacer(modifier = Modifier.height(8.dp))
-            Row(
+            FlowRow(
                 horizontalArrangement = Arrangement.spacedBy(6.dp),
+                verticalArrangement = Arrangement.spacedBy(6.dp),
                 modifier = Modifier.padding(start = 4.dp)
             ) {
                 message.quickChips.forEach { chip ->
