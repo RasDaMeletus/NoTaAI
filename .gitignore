@@ -21,6 +21,7 @@ my-upload-key.jks
 .release-store-password
 *.keystore
 *.jks
+*.apk
 .hermes/
 graphify-out/
 ViNote
