@@ -415,6 +415,7 @@ class ViNoteViewModel(application: Application) : AndroidViewModel(application) 
             CloudSyncStatus.IDLE -> SyncStatus.IDLE
             CloudSyncStatus.SYNCING -> SyncStatus.SYNCING
             CloudSyncStatus.SYNCED -> SyncStatus.SUCCESS
+            CloudSyncStatus.PENDING -> SyncStatus.IDLE
             CloudSyncStatus.ERROR, CloudSyncStatus.OFFLINE -> SyncStatus.ERROR
         }
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), SyncStatus.IDLE)
