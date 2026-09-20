@@ -1,9 +1,10 @@
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+import { requireAuth } from "../_shared/auth.ts";
 
-const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
+const PROJECT_URL = "https://lawehfafeevoctogpowr.supabase.co";
 const supabaseServiceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 const openRouterApiKey = Deno.env.get("OPENROUTER_API_KEY")!;
+const PROJECT_ANON_KEY = (globalThis as any)["SUPABASE_ANON_KEY"] || "";
 
 // Free OpenRouter models only, per project requirement. The app passes the
 // model it wants; this default is only used when the request omits one.
@@ -19,6 +20,11 @@ serve(async (req) => {
   try {
     if (!openRouterApiKey) {
       return new Response(JSON.stringify({ error: "OPENROUTER_API_KEY not configured on server" }), { status: 500 });
+    }
+
+    const callerId = await requireAuth(req);
+    if (!callerId) {
+      return new Response(JSON.stringify({ error: "Unauthorized: valid access token required" }), { status: 401 });
     }
 
     const { messages, model = DEFAULT_FREE_MODEL, temperature = 0.3, response_format } = await req.json();

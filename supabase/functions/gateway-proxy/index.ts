@@ -12,7 +12,21 @@
  */
 
 import { serve } from "https://deno.land/std@0.177.0/http/server.ts";
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { requireAuth } from "../_shared/auth.ts";
+const __BUILD = "probe-1";
+
+const PROJECT_URL = "https://lawehfafeevoctogpowr.supabase.co";
+const PROJECT_ANON_KEY = (globalThis as any)["SUPABASE_ANON_KEY"] || "";
+
+/**
+ * Verify the caller's Supabase access token against the project's auth
+ * service. Returns the authenticated user id, or null when the token is
+ * absent/invalid/expired.
+ *
+ * This function holds every unofficial-wallet credential (GoPay client_secret,
+ * OVO/Midtrans keys). Without a real JWT check here, anyone on the internet
+ * could invoke it and spend the server-side secrets.
+ */
 
 // ──────────────────────────────────────────────────────────────
 // GoPay Unofficial API (from akmaldira/unofficial-gojek-api)
@@ -38,8 +52,8 @@ const GOJEK_HEADERS: Record<string, string> = {
 };
 
 const GOJEK_CLIENT_ID = "gojek:consumer:app";
-const GOJEK_CLIENT_SECRET = "pGwQ7oi8bKqqwvid09UrjqpkMEHklb";
-const GOJEK_MFA_CLIENT_ID = "6d11d261d7ae462dbd4be0dc5f36a697-MFAGOJEK";
+const GOJEK_CLIENT_SECRET = Deno.env.get("GOJEK_CLIENT_SECRET") || "";
+const GOJEK_MFA_CLIENT_ID = Deno.env.get("GOJEK_MFA_CLIENT_ID") || "";
 
 // ──────────────────────────────────────────────────────────────
 // OVO Unofficial API (from namtxs/ovoid-API)
@@ -106,93 +120,64 @@ async function midtransBalanceInquiry(
     ? "https://api.midtrans.com"
     : "https://api.sandbox.midtrans.com";
 
-  const timestamp = new Date().toISOString();
-  const orderId = `NOTA-${Date.now()}`;
-
-  // Map provider to Midtrans payment method
+  // Read-only balance lookup. Never route this through /v2/charge: a charge
+  // is a money movement, and Midtrans treats settlement of gross_amount as
+  // real. This function is only meant to display a balance.
   const paymentMethods: Record<string, string> = {
     GOPAY: "gopay",
     OVO: "ovo",
     DANA: "dana",
   };
-
   const paymentMethod = paymentMethods[provider] || provider.toLowerCase();
 
-  // For Midtrans, we need the user's access token from the frontend
-  // The flow: user logs into e-wallet → gets token → sends to this proxy
-  // Then we call Midtrans BI-SNAP API
-
-  // Step 1: Create charge request for balance inquiry
-  const chargeBody = {
-    payment_type: paymentMethod,
-    transaction_details: {
-      order_id: orderId,
-      gross_amount: 1, // Minimal amount for inquiry
-    },
-    [paymentMethod]: {
-      account_id: accountId,
-    },
-  };
-
-  const signatureString = `${orderId}${timestamp}1${serverKey}`;
-  const signature = await hmacSha256(serverKey, signatureString);
-
-  const headers: Record<string, string> = {
-    "Content-Type": "application/json",
-    Authorization: `Basic ${btoa(serverKey + ":")}`,
-    "X-Redirect-Url": "https://nota.finance/callback",
-  };
-
   try {
-    const resp = await fetch(`${baseUrl}/v2/charge`, {
-      method: "POST",
-      headers,
-      body: JSON.stringify({
-        ...chargeBody,
-        callbacks: {
-          finish: "https://nota.finance/callback",
-        },
-      }),
+    // GET /v2/{paymentMethod}/balance?account_id=... — the dedicated,
+    // non-mutating balance endpoint in the Midtrans BI-SNAP API.
+    const url =
+      `${baseUrl}/v2/${paymentMethod}/balance?account_id=` +
+      encodeURIComponent(accountId);
+
+    const resp = await fetch(url, {
+      method: "GET",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: "Basic " + btoa(serverKey + ":"),
+        "X-Redirect-Url": "https://nota.finance/callback",
+      },
     });
 
     const data = await resp.json();
 
-    if (data.status_code === "200" || data.status_code === "201") {
-      // Extract balance from the response
-      const balanceInfo =
-        data.gopay?.account_details ||
-        data.ovo?.account_details ||
-        data.dana?.account_details;
-
-      if (balanceInfo) {
+    if (resp.ok) {
+      // /v2/<method>/balance returns { balance: "...", point_balance: ... }
+      // for GoPay, or { balance: ... } for other methods.
+      const balance = data.balance ?? data.account_details?.balance ?? null;
+      if (balance !== null && balance !== undefined) {
         return new Response(
           JSON.stringify({
             success: true,
-            balance: balanceInfo.balance || balanceInfo.amount || 0,
+            balance: typeof balance === "string" ? Number(balance) : balance,
             currency: "IDR",
             provider: provider,
-            orderId: orderId,
           }),
           { headers: { "Content-Type": "application/json" } }
         );
       }
-
       return new Response(
         JSON.stringify({
           success: false,
-          message: `Charge created but balance not in response. Status: ${data.status_message}`,
-          orderId: orderId,
+          message: "Balance endpoint returned no balance field.",
           raw: data,
         }),
-        { headers: { "Content-Type": "application/json" } }
+        { status: 502, headers: { "Content-Type": "application/json" } }
       );
     }
 
     return new Response(
       JSON.stringify({
         success: false,
-        message: data.status_message || "Midtrans charge failed",
-        code: data.status_code,
+        message: data.status_message || data.error_message || `Midtrans balance inquiry failed (HTTP ${resp.status})`,
+        code: data.status_code || resp.status,
       }),
       { status: 400, headers: { "Content-Type": "application/json" } }
     );
@@ -762,11 +747,12 @@ serve(async (req) => {
   }
 
   try {
-    // Verify Supabase auth
-    const authHeader = req.headers.get("Authorization");
-    if (!authHeader) {
+    // Verify Supabase auth. A present-but-invalid header must not pass:
+    // this function holds every wallet credential.
+    const userId = await requireAuth(req);
+    if (!userId) {
       return new Response(
-        JSON.stringify({ error: "Missing authorization" }),
+        JSON.stringify({ error: "Unauthorized", build: __BUILD }),
         { status: 401, headers: { "Content-Type": "application/json" } }
       );
     }

@@ -3,6 +3,7 @@
 // Deploy to Supabase via: supabase functions deploy midtrans-proxy
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
+import { requireAuth } from "../_shared/auth.ts"
 
 const MIDTRANS_SERVER_KEY = Deno.env.get("MIDTRANS_SERVER_KEY") || ""
 const MIDTRANS_IS_PRODUCTION = Deno.env.get("MIDTRANS_IS_PRODUCTION") === "true"
@@ -23,6 +24,13 @@ serve(async (req) => {
   }
 
   try {
+    const callerId = await requireAuth(req)
+    if (!callerId) {
+      return new Response(JSON.stringify({ error: "Unauthorized: valid access token required" }), {
+        status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" }
+      })
+    }
+
     const payload = await req.json()
     const { action, provider, accountId, accessToken, phoneNumber } = payload
 
