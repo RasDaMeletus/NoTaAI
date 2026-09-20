@@ -47,12 +47,16 @@ class OpenRouterClient(
         .writeTimeout(60, TimeUnit.SECONDS)
         .build()
 
-    // anonKey injected externally (safe to expose in APK; not the secret key)
-    private var anonKey: String = ""
+    // Resolve the current Supabase user access token for every request.
+    // The session may be refreshed or cleared after this client is created.
+    private var accessTokenProvider: suspend () -> String? = { null }
 
-    fun configure(proxyBaseUrl: String, anon: String) {
+    fun configure(
+        proxyBaseUrl: String,
+        accessTokenProvider: suspend () -> String?
+    ) {
         proxyUrl = proxyBaseUrl.trimEnd('/')
-        anonKey = anon
+        this.accessTokenProvider = accessTokenProvider
     }
 
     fun setModel(model: String) { defaultModel = model.trim() }
@@ -68,6 +72,11 @@ class OpenRouterClient(
         if (url.isEmpty()) {
             return@withContext Result.failure(IllegalStateException("OpenRouter proxy URL not configured"))
         }
+
+        val accessToken = accessTokenProvider()?.takeIf { it.isNotBlank() }
+            ?: return@withContext Result.failure(
+                IllegalStateException("Sign in is required to use online AI")
+            )
 
         // Free models are frequently rate-limited; try the requested model,
         // then walk the free chain until one answers.
@@ -95,7 +104,7 @@ class OpenRouterClient(
                 val req = Request.Builder()
                     .url(url)
                     .addHeader("Content-Type", "application/json")
-                    .apply { if (anonKey.isNotBlank()) addHeader("apikey", anonKey) }
+                    .addHeader("apikey", accessToken)
                     .post(bodyJson.toString().toRequestBody("application/json".toMediaType()))
                     .build()
 
