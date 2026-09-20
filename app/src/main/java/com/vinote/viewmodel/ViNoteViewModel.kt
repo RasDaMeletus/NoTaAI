@@ -15,6 +15,7 @@ import com.vinote.data.engine.ExtractedReceiptData
 import com.vinote.data.engine.ExtractedVoiceEntity
 import com.vinote.data.engine.OfflineNlpEngine
 import com.vinote.data.local.NoTaDatabase
+import com.vinote.data.local.entities.BudgetEntity
 import com.vinote.data.local.entities.DetectionEventEntity
 import com.vinote.data.local.entities.DetectionStatus
 import com.vinote.data.local.entities.WalletAccountEntity
@@ -99,6 +100,7 @@ import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.util.Calendar
+import java.util.Locale
 
 enum class ActivityFilter {
     ALL,
@@ -586,6 +588,38 @@ class ViNoteViewModel(application: Application) : AndroidViewModel(application) 
     // Computed Constants
     val dailyLimit: Long get() = _userProfile.value.dailyBudgetLimit
 
+    private fun currentBudgetPeriod(): String {
+        val calendar = Calendar.getInstance()
+        return String.format(
+            Locale.US,
+            "%04d-%02d",
+            calendar.get(Calendar.YEAR),
+            calendar.get(Calendar.MONTH) + 1
+        )
+    }
+
+    private suspend fun persistDailyBudget(
+        userId: String,
+        dailyLimit: Long,
+        monthlyLimit: Long = _userProfile.value.monthlyIncome
+    ) {
+        if (userId.isBlank() || dailyLimit <= 0L) return
+        val budgetDao = database.budgetDao()
+        val existing = budgetDao.getBudget(userId)
+        budgetDao.saveBudget(
+            (existing ?: BudgetEntity(
+                id = "budget_$userId",
+                userId = userId,
+                periodMonthYear = currentBudgetPeriod()
+            )).copy(
+                dailyLimit = dailyLimit,
+                monthlyLimit = monthlyLimit.coerceAtLeast(0L),
+                periodMonthYear = currentBudgetPeriod(),
+                updatedTimestamp = System.currentTimeMillis()
+            )
+        )
+    }
+
     init {
         // Wire OpenRouterClient with Supabase Edge Function Proxy URL
         val supabaseProvider = SupabaseClientProvider(application)
@@ -642,10 +676,13 @@ class ViNoteViewModel(application: Application) : AndroidViewModel(application) 
             authRepository.currentSession.collect { session ->
                 if (session != null) {
                     WalletNotificationListenerService.activeUserId = session.userId
+                    val persistedBudget = database.budgetDao().getBudget(session.userId)
                     _userProfile.value = _userProfile.value.copy(
                         fullName = session.name,
                         email = session.email,
-                        avatarInitials = session.name.split(" ").mapNotNull { it.firstOrNull()?.uppercase() }.take(2).joinToString("")
+                        avatarInitials = session.name.split(" ").mapNotNull { it.firstOrNull()?.uppercase() }.take(2).joinToString(""),
+                        dailyBudgetLimit = persistedBudget?.dailyLimit
+                            ?: _userProfile.value.dailyBudgetLimit
                     )
                 }
             }
@@ -1093,11 +1130,16 @@ class ViNoteViewModel(application: Application) : AndroidViewModel(application) 
             savingsTargetPercentage = savingsPercentage
         )
         viewModelScope.launch {
-            authRepository.loginWithDirectProfile(
-                email = current.email.ifBlank { "user@vinote.local" },
-                name = resolvedName,
-                provider = "guest"
-            )
+            if (authRepository.getUserId() == null) {
+                authRepository.loginWithDirectProfile(
+                    email = current.email.ifBlank { "user@vinote.local" },
+                    name = resolvedName,
+                    provider = "guest"
+                )
+            }
+            authRepository.getUserId()?.let { userId ->
+                persistDailyBudget(userId, dailyBudgetLimit, monthlyIncome)
+            }
         }
         _notaConfig.value = _notaConfig.value.copy(baseColor = startingColor, eyeState = NotaEyeState.HAPPY)
         if (firstGoalTitle.isNotBlank() && firstGoalTarget > 0) {
@@ -1141,11 +1183,16 @@ class ViNoteViewModel(application: Application) : AndroidViewModel(application) 
             avatarInitials = if (initials.isNotEmpty()) initials else "NU"
         )
         viewModelScope.launch {
-            authRepository.loginWithDirectProfile(
-                email = email.ifBlank { "user@vinote.local" },
-                name = fullName.ifBlank { "NoTa User" },
-                provider = "profile_edit"
-            )
+            if (authRepository.getUserId() == null) {
+                authRepository.loginWithDirectProfile(
+                    email = email.ifBlank { "user@vinote.local" },
+                    name = fullName.ifBlank { "NoTa User" },
+                    provider = "profile_edit"
+                )
+            }
+            authRepository.getUserId()?.let { userId ->
+                persistDailyBudget(userId, dailyBudgetLimit, monthlyIncome)
+            }
         }
         showBanner("Profile & Budget settings updated! 💾")
     }
@@ -1465,6 +1512,11 @@ class ViNoteViewModel(application: Application) : AndroidViewModel(application) 
     fun calmNotaDown(newDailyLimit: Long? = null) {
         if (newDailyLimit != null && newDailyLimit > 0) {
             _userProfile.value = _userProfile.value.copy(dailyBudgetLimit = newDailyLimit)
+            viewModelScope.launch {
+                authRepository.getUserId()?.let { userId ->
+                    persistDailyBudget(userId, newDailyLimit)
+                }
+            }
         }
         _budgetAlertState.value = _budgetAlertState.value.copy(isTriggered = false, isDismissed = true)
         _notaConfig.value = _notaConfig.value.copy(eyeState = NotaEyeState.HAPPY)

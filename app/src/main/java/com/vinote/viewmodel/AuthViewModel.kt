@@ -12,7 +12,7 @@ import javax.inject.Inject
 
 /**
  * Authentication state machine for ViNote.
- * Manages Supabase Email Auth flow using AuthRepository.
+ * Manages Supabase OAuth and guest authentication using AuthRepository.
  */
 @HiltViewModel
 class AuthViewModel @Inject constructor(
@@ -21,6 +21,16 @@ class AuthViewModel @Inject constructor(
 
     private val _authState = MutableStateFlow<AuthState>(AuthState.Idle)
     val authState: StateFlow<AuthState> = _authState.asStateFlow()
+
+    init {
+        viewModelScope.launch {
+            authRepository.currentSession.collect { session ->
+                if (session?.isAuthenticated == true) {
+                    _authState.value = AuthState.Authenticated(session.userId)
+                }
+            }
+        }
+    }
 
     /**
      * Checks if a user is already signed in.
@@ -44,35 +54,50 @@ class AuthViewModel @Inject constructor(
         _authState.value = AuthState.Authenticated(userId)
     }
 
+    fun loginWithGoogle() {
+        viewModelScope.launch {
+            _authState.value = AuthState.Loading
+            authRepository.signInWithSupabaseGoogle()
+                .onSuccess { _authState.value = AuthState.AwaitingOAuth }
+                .onFailure { error ->
+                    _authState.value = AuthState.Error(error.message ?: "Unable to start Google sign-in")
+                }
+        }
+    }
+
     fun loginWithEmail(email: String, password: String) {
         viewModelScope.launch {
             _authState.value = AuthState.Loading
-            when (val result = authRepository.signInWithSupabaseEmail(email, password)) {
-                is Result -> {
+            authRepository.signInWithSupabaseEmail(email, password)
+                .onSuccess {
                     val userId = authRepository.getUserId()
-                    if (userId != null) {
-                        _authState.value = AuthState.Authenticated(userId)
+                    _authState.value = if (userId != null) {
+                        AuthState.Authenticated(userId)
                     } else {
-                        _authState.value = AuthState.Error("Supabase sign-in succeeded but userId is null")
+                        AuthState.Error("Sign-in completed without a user session")
                     }
                 }
-            }
+                .onFailure { error ->
+                    _authState.value = AuthState.Error(error.message ?: "Unable to sign in")
+                }
         }
     }
 
     fun signUpWithEmail(email: String, password: String) {
         viewModelScope.launch {
             _authState.value = AuthState.Loading
-            when (val result = authRepository.signUpWithSupabaseEmail(email, password)) {
-                is Result -> {
+            authRepository.signUpWithSupabaseEmail(email, password)
+                .onSuccess {
                     val userId = authRepository.getUserId()
-                    if (userId != null) {
-                        _authState.value = AuthState.Authenticated(userId)
+                    _authState.value = if (userId != null) {
+                        AuthState.Authenticated(userId)
                     } else {
-                        _authState.value = AuthState.Error("Supabase sign-up succeeded but userId is null")
+                        AuthState.Error("Sign-up completed without a user session")
                     }
                 }
-            }
+                .onFailure { error ->
+                    _authState.value = AuthState.Error(error.message ?: "Unable to create account")
+                }
         }
     }
 
@@ -98,6 +123,7 @@ sealed class AuthState {
     data object Idle : AuthState()
     data object Loading : AuthState()
     data object Unauthenticated : AuthState()
+    data object AwaitingOAuth : AuthState()
     data class Authenticated(val userId: String) : AuthState()
     data class Error(val message: String) : AuthState()
 }

@@ -4,6 +4,7 @@ import android.content.Context
 import io.github.jan.supabase.SupabaseClient
 import io.github.jan.supabase.createSupabaseClient
 import io.github.jan.supabase.gotrue.Auth
+import io.github.jan.supabase.gotrue.FlowType
 import io.github.jan.supabase.postgrest.Postgrest
 import io.github.jan.supabase.realtime.Realtime
 import io.github.jan.supabase.storage.Storage
@@ -36,7 +37,11 @@ class SupabaseClientProvider(private val appContext: Context) {
                     supabaseKey = key
                 ) {
                     install(Postgrest)
-                    install(Auth)
+                    install(Auth) {
+                        flowType = FlowType.PKCE
+                        scheme = "nota"
+                        host = "auth"
+                    }
                     install(Realtime)
                     install(Storage)
                 }

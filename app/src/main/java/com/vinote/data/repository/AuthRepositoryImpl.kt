@@ -97,6 +97,19 @@ class AuthRepositoryImpl @Inject constructor(
         }
     }
 
+    private fun applyAuthenticatedSession(session: SupabaseSession): String {
+        val user = session.user
+        _supabaseSessionFlow.value = session
+        _userId.value = user.id
+        _currentSession.value = UserSession(
+            userId = user.id,
+            email = user.email ?: "",
+            name = user.userMetadata?.get("full_name")?.toString() ?: "NoTa User",
+            isAuthenticated = true
+        )
+        return user.id
+    }
+
     override fun getUserId(): String? = _userId.value
 
     override fun setUserId(userId: String?) {
@@ -167,6 +180,11 @@ class AuthRepositoryImpl @Inject constructor(
                 this.email = email
                 this.password = password
             }
+            val session = client.auth.currentSessionOrNull()
+                ?: return Result.failure(
+                    IllegalStateException("Account created. Confirm your email, then sign in.")
+                )
+            applyAuthenticatedSession(session)
             Result.success(Unit)
         } catch (t: Throwable) {
             Result.failure(t)
@@ -181,6 +199,9 @@ class AuthRepositoryImpl @Inject constructor(
                 this.email = email
                 this.password = password
             }
+            val session = client.auth.currentSessionOrNull()
+                ?: return Result.failure(IllegalStateException("Sign-in completed without a user session"))
+            applyAuthenticatedSession(session)
             Result.success(Unit)
         } catch (t: Throwable) {
             Result.failure(t)
