@@ -1,5 +1,5 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
-import { requireAuth } from "../_shared/auth.ts";
+import { requireAuth } from "../_shared/identity.ts";
 
 const PROJECT_URL = "https://lawehfafeevoctogpowr.supabase.co";
 const supabaseServiceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;

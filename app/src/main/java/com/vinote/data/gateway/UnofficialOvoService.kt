@@ -81,7 +81,7 @@ class UnofficialOvoService(
                     put("deviceId", ovoDeviceId)
                 }.toString().toRequestBody(jsonMediaType))
                 .apply {
-                    addHeader("Authorization", "Bearer $supabaseAnonKey")
+                    addHeader("apikey", supabaseAnonKey)
                 }
                 .build()
 
@@ -133,7 +133,7 @@ class UnofficialOvoService(
                     put("deviceId", ovoDeviceId)
                 }.toString().toRequestBody(jsonMediaType))
                 .apply {
-                    addHeader("Authorization", "Bearer $supabaseAnonKey")
+                    addHeader("apikey", supabaseAnonKey)
                 }
                 .build()
 
@@ -189,7 +189,7 @@ class UnofficialOvoService(
                     put("deviceId", ovoDeviceId)
                 }.toString().toRequestBody(jsonMediaType))
                 .apply {
-                    addHeader("Authorization", "Bearer $supabaseAnonKey")
+                    addHeader("apikey", supabaseAnonKey)
                 }
                 .build()
 
@@ -230,7 +230,7 @@ class UnofficialOvoService(
                     put("deviceId", ovoDeviceId)
                 }.toString().toRequestBody(jsonMediaType))
                 .apply {
-                    addHeader("Authorization", "Bearer $supabaseAnonKey")
+                    addHeader("apikey", supabaseAnonKey)
                 }
                 .build()
 

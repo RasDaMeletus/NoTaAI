@@ -79,7 +79,7 @@ class UnofficialGoPayService(
                     put("accessToken", accessToken)
                 }.toString().toRequestBody(jsonMediaType))
                 .apply {
-                    addHeader("Authorization", "Bearer $supabaseAnonKey")
+                    addHeader("apikey", supabaseAnonKey)
                 }
                 .build()
 
@@ -141,7 +141,7 @@ class UnofficialGoPayService(
                     put("phone", phoneNumber)
                 }.toString().toRequestBody(jsonMediaType))
                 .apply {
-                    addHeader("Authorization", "Bearer $supabaseAnonKey")
+                    addHeader("apikey", supabaseAnonKey)
                 }
                 .build()
 
@@ -191,7 +191,7 @@ class UnofficialGoPayService(
                     put("otpToken", otpToken)
                 }.toString().toRequestBody(jsonMediaType))
                 .apply {
-                    addHeader("Authorization", "Bearer $supabaseAnonKey")
+                    addHeader("apikey", supabaseAnonKey)
                 }
                 .build()
 
@@ -246,7 +246,7 @@ class UnofficialGoPayService(
                     put("challengeToken", challengeToken)
                 }.toString().toRequestBody(jsonMediaType))
                 .apply {
-                    addHeader("Authorization", "Bearer $supabaseAnonKey")
+                    addHeader("apikey", supabaseAnonKey)
                 }
                 .build()
 

@@ -3,7 +3,7 @@
 // Deploy to Supabase via: supabase functions deploy midtrans-proxy
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
-import { requireAuth } from "../_shared/auth.ts"
+import { requireAuth } from "../_shared/identity.ts"
 
 const MIDTRANS_SERVER_KEY = Deno.env.get("MIDTRANS_SERVER_KEY") || ""
 const MIDTRANS_IS_PRODUCTION = Deno.env.get("MIDTRANS_IS_PRODUCTION") === "true"

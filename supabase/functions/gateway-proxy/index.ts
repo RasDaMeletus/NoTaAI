@@ -12,7 +12,7 @@
  */
 
 import { serve } from "https://deno.land/std@0.177.0/http/server.ts";
-import { requireAuth } from "../_shared/auth.ts";
+import { requireAuth } from "../_shared/identity.ts";
 const __BUILD = "probe-1";
 
 const PROJECT_URL = "https://lawehfafeevoctogpowr.supabase.co";
