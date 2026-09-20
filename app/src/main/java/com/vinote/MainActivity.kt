@@ -1,6 +1,7 @@
 package com.vinote
 
 import android.os.Bundle
+import android.content.Intent
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
@@ -73,6 +74,9 @@ import com.vinote.ui.theme.ViNoteTextPrimary
 import com.vinote.viewmodel.ViNoteViewModel
 import com.vinote.domain.security.BiometricSecurityManager
 import com.vinote.domain.security.ShakeDetector
+import com.vinote.data.supabase.SupabaseClientProvider
+import io.github.jan.supabase.gotrue.handleDeeplinks
+import javax.inject.Inject
 import com.vinote.ui.widget.NoTaQuickWidgetProvider
 import android.widget.Toast
 import dagger.hilt.android.AndroidEntryPoint
@@ -95,12 +99,14 @@ enum class ActiveScreen {
 
 @AndroidEntryPoint
 class MainActivity : ComponentActivity() {
+    @Inject lateinit var supabaseClientProvider: SupabaseClientProvider
     private val viewModel: ViNoteViewModel by viewModels()
     private var shakeDetector: ShakeDetector? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
+        supabaseClientProvider.clientOrNull?.handleDeeplinks(intent)
 
         // Privacy: Prevent screenshot & task switcher capture when enabled (PRD Section 4.1)
         lifecycleScope.launch {
@@ -150,6 +156,12 @@ class MainActivity : ComponentActivity() {
                 )
             }
         }
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        supabaseClientProvider.clientOrNull?.handleDeeplinks(intent)
     }
 
     override fun onResume() {
