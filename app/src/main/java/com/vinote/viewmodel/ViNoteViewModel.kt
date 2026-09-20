@@ -593,7 +593,9 @@ class ViNoteViewModel(application: Application) : AndroidViewModel(application) 
             val proxyUrl = supabaseProvider.supabaseFunctionsUrl + "/openrouter-proxy"
             aiService.openRouterClient.configure(
                 proxyBaseUrl = proxyUrl,
-                anon = supabaseProvider.supabaseAnonKey
+                accessTokenProvider = {
+                    authRepository.supabaseSessionFlow.value?.accessToken
+                }
             )
         }
 
