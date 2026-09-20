@@ -1,5 +1,6 @@
 package com.vinote.data.repository
 
+import com.vinote.data.local.entity.UserSession
 import com.vinote.data.supabase.SupabaseClientProvider
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -18,7 +19,8 @@ import io.github.jan.supabase.gotrue.providers.builtin.Email as SupabaseEmailPro
  */
 @Singleton
 class AuthRepositoryImpl @Inject constructor(
-    private val supabaseClientProvider: SupabaseClientProvider
+    private val supabaseClientProvider: SupabaseClientProvider,
+    @dagger.hilt.android.qualifiers.ApplicationContext private val appContext: android.content.Context
 ) : AuthRepository {
 
     private val _userId = MutableStateFlow<String?>(null)
@@ -29,6 +31,13 @@ class AuthRepositoryImpl @Inject constructor(
 
     private val _supabaseSessionFlow = MutableStateFlow<SupabaseSession?>(null)
     override val supabaseSessionFlow: StateFlow<SupabaseSession?> = _supabaseSessionFlow
+
+    // Offline / guest mode. Supabase Auth is the production path, but the app
+    // must be usable with no account and no network: this provisions a stable
+    // local id that Room rows are scoped to, and restores it on relaunch.
+    private val guestPrefs = appContext.getSharedPreferences(
+        "vinote_guest", android.content.Context.MODE_PRIVATE
+    )
 
     init {
         // Supabase auth state listener (guarded for offline-first resilience)
@@ -51,7 +60,13 @@ class AuthRepositoryImpl @Inject constructor(
                                 isAuthenticated = true
                             )
                         } else {
-                            if (_userId.value?.startsWith("user_") != true) {
+                            // Keep the guest id unless a real Supabase id has
+                            // taken over, so offline data is never orphaned.
+                            if (_userId.value == null ||
+                                _userId.value!!.startsWith("guest_")) {
+                                // A NotAuthenticated after we had a guest id
+                                // means Supabase has no session; keep guest.
+                            } else {
                                 _userId.value = null
                                 _currentSession.value = null
                             }
@@ -61,6 +76,24 @@ class AuthRepositoryImpl @Inject constructor(
                     android.util.Log.w("AuthRepo", "Supabase auth session monitoring disabled: ${t.message}")
                 }
             }
+        }
+
+        // Restore a previous guest/offline session so a relaunch does not throw
+        // the user back to onboarding. Supabase sessions are handled above.
+        try {
+            guestPrefs.getString("guest_id", null)?.let { gid ->
+                _userId.value = gid
+                _currentSession.value = UserSession(
+                    userId = gid,
+                    email = "user@vinote.local",
+                    name = "NoTa User",
+                    provider = "offline",
+                    isAuthenticated = false,
+                    isOfflineMode = true
+                )
+            }
+        } catch (t: Throwable) {
+            android.util.Log.w("AuthRepo", "Guest session restore failed: ${t.message}")
         }
     }
 
@@ -90,8 +123,27 @@ class AuthRepositoryImpl @Inject constructor(
     override fun getCanonicalUserId(): String = _userId.value
         ?: throw IllegalStateException("No authenticated user. User must sign in via Supabase Auth.")
 
+    // Offline / guest mode.
+    // Supabase Auth is the production path, but the app must be usable with no
+    // account and no network. This provisions a stable local id that Room rows
+    // are scoped to; it can later be migrated when the user signs in.
     override fun loginWithDirectProfile(email: String, name: String, provider: String) {
-        throw UnsupportedOperationException("Direct profile login removed. Use Supabase Auth only.")
+        // Stable per-device id: data created as a guest stays reachable on
+        // relaunch, instead of orphaning rows behind a random id each time.
+        val guestId = guestPrefs.getString("guest_id", null)
+            ?: "guest_${java.util.UUID.randomUUID()}".also {
+                guestPrefs.edit().putString("guest_id", it).apply()
+            }
+
+        _userId.value = guestId
+        _currentSession.value = UserSession(
+            userId = guestId,
+            email = email,
+            name = name,
+            provider = provider,
+            isAuthenticated = false,
+            isOfflineMode = true
+        )
     }
 
     // ===== Supabase Authentication Implementation =====
