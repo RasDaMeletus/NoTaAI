@@ -47,32 +47,36 @@ class AuthViewModel @Inject constructor(
     fun loginWithEmail(email: String, password: String) {
         viewModelScope.launch {
             _authState.value = AuthState.Loading
-            when (val result = authRepository.signInWithSupabaseEmail(email, password)) {
-                is Result -> {
+            authRepository.signInWithSupabaseEmail(email, password)
+                .onSuccess {
                     val userId = authRepository.getUserId()
-                    if (userId != null) {
-                        _authState.value = AuthState.Authenticated(userId)
+                    _authState.value = if (userId != null) {
+                        AuthState.Authenticated(userId)
                     } else {
-                        _authState.value = AuthState.Error("Supabase sign-in succeeded but userId is null")
+                        AuthState.Error("Sign-in completed without a user session")
                     }
                 }
-            }
+                .onFailure { error ->
+                    _authState.value = AuthState.Error(error.message ?: "Unable to sign in")
+                }
         }
     }
 
     fun signUpWithEmail(email: String, password: String) {
         viewModelScope.launch {
             _authState.value = AuthState.Loading
-            when (val result = authRepository.signUpWithSupabaseEmail(email, password)) {
-                is Result -> {
+            authRepository.signUpWithSupabaseEmail(email, password)
+                .onSuccess {
                     val userId = authRepository.getUserId()
-                    if (userId != null) {
-                        _authState.value = AuthState.Authenticated(userId)
+                    _authState.value = if (userId != null) {
+                        AuthState.Authenticated(userId)
                     } else {
-                        _authState.value = AuthState.Error("Supabase sign-up succeeded but userId is null")
+                        AuthState.Error("Sign-up completed without a user session")
                     }
                 }
-            }
+                .onFailure { error ->
+                    _authState.value = AuthState.Error(error.message ?: "Unable to create account")
+                }
         }
     }
 
