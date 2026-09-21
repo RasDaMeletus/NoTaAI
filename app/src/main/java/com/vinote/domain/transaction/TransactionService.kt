@@ -10,8 +10,12 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 
 /**
  * Single Unified Transaction Service for ViNote.
@@ -28,6 +32,28 @@ class TransactionService(
     fun setUserId(id: String) { userId = id }
 
     val allTransactions: Flow<List<TransactionItem>> = transactionDao.getAllTransactions()
+        .map { transactions ->
+            val now = System.currentTimeMillis()
+            transactions.map { transaction ->
+                transaction.copy(timeLabel = formatRelativeTime(transaction.timestamp, now))
+            }
+        }
+
+    private fun formatRelativeTime(timestamp: Long, now: Long): String {
+        if (timestamp <= 0L) return "Unknown time"
+        val elapsed = (now - timestamp).coerceAtLeast(0L)
+        val minute = 60_000L
+        val hour = 60L * minute
+        val day = 24L * hour
+        return when {
+            elapsed < minute -> "Just now"
+            elapsed < hour -> "${elapsed / minute} min ago"
+            elapsed < day -> "${elapsed / hour} hr ago"
+            elapsed < 2L * day -> "Yesterday"
+            else -> SimpleDateFormat("dd MMM yyyy, HH:mm", Locale.getDefault())
+                .format(Date(timestamp))
+        }
+    }
 
     fun validateTransaction(transaction: TransactionItem): TransactionValidationResult {
         if (transaction.amount <= 0) {
