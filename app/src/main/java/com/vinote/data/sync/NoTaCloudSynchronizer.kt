@@ -16,7 +16,6 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
 import java.text.SimpleDateFormat
@@ -102,11 +101,10 @@ class NoTaCloudSynchronizer(
                 put("is_confirmed", transaction.isConfirmed)
                 put("sync_state", "SYNCED")
             }
-            clientTable("transactions").insert<JsonObject>(
-                payload,
-                upsert = true,
-                onConflict = "fingerprint"
-            )
+            clientTable("transactions").delete {
+                eq("fingerprint", fingerprint)
+            }
+            clientTable("transactions").insert<JsonObject>(listOf(payload))
             if (transaction.fingerprint == null || transaction.syncState != "SYNCED") {
                 transactionDao.updateTransaction(
                     transaction.copy(fingerprint = fingerprint, syncState = "SYNCED")
@@ -137,7 +135,11 @@ class NoTaCloudSynchronizer(
                 put("linked_account_id", wallet.linkedAccountId)
                 // Never upload gatewayAccessToken.
             }
-            clientTable("wallet_accounts").insert<JsonObject>(payload, upsert = true, onConflict = "id")
+            val cloudWalletId = "$userId:${wallet.id}"
+            clientTable("wallet_accounts").delete {
+                eq("id", cloudWalletId)
+            }
+            clientTable("wallet_accounts").insert<JsonObject>(listOf(payload))
         }
         return wallets.size
     }
@@ -153,7 +155,10 @@ class NoTaCloudSynchronizer(
             put("period_month_year", budget.periodMonthYear)
             put("updated_at", isoTimestamp(budget.updatedTimestamp))
         }
-        clientTable("budgets").insert<JsonObject>(payload, upsert = true, onConflict = "id")
+        clientTable("budgets").delete {
+            eq("id", "budget_$userId")
+        }
+        clientTable("budgets").insert<JsonObject>(listOf(payload))
         return 1
     }
 
@@ -170,11 +175,11 @@ class NoTaCloudSynchronizer(
                 put("is_deleted", false)
                 put("updated_at", isoTimestamp(System.currentTimeMillis()))
             }
-            clientTable("savings_cloud").insert<JsonObject>(
-                payload,
-                upsert = true,
-                onConflict = "user_id,local_id"
-            )
+            clientTable("savings_cloud").delete {
+                eq("user_id", userId)
+                eq("local_id", goal.id)
+            }
+            clientTable("savings_cloud").insert<JsonObject>(listOf(payload))
         }
         return goals.size
     }
