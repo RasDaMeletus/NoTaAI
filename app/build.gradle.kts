@@ -39,7 +39,29 @@ android {
       }
     }
     create("debugConfig") {
-      storeFile = file("${rootDir}/debug.keystore")
+      // CI clones have no debug.keystore (it is gitignored). Generate a
+      // throwaway one on demand so the debug build always signs; a debug
+      // key is not a secret and is unique per machine anyway.
+      val ks = file("${rootDir}/debug.keystore")
+      if (!ks.exists()) {
+        ks.parentFile.mkdirs()
+        val kt = System.getProperty("java.home") + "/bin/keytool"
+        val cmd = listOf(
+          kt, "-genkeypair", "-v", "-keystore", ks.absolutePath,
+          "-storepass", "android", "-keypass", "android",
+          "-alias", "androiddebugkey", "-keyalg", "RSA", "-keysize", "2048",
+          "-validity", "10000", "-dname", "CN=Android Debug,O=Android,C=US"
+        )
+        val pb = ProcessBuilder(cmd)
+        pb.redirectErrorStream(true)
+        val proc = pb.start()
+        val out = proc.inputStream.bufferedReader().readText()
+        if (proc.waitFor() != 0) {
+          throw GradleException("Failed to generate debug.keystore:\n$out")
+        }
+        logger.lifecycle("Generated debug.keystore for CI signing")
+      }
+      storeFile = ks
       storePassword = "android"
       keyAlias = "androiddebugkey"
       keyPassword = "android"
