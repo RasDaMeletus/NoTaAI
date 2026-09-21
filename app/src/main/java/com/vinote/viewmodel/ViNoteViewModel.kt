@@ -116,6 +116,8 @@ class ViNoteViewModel(application: Application) : AndroidViewModel(application) 
     private val cloudSynchronizer = NoTaCloudSynchronizer(
         transactionDao = database.transactionDao(),
         goalDao = database.goalDao(),
+        walletAccountDao = database.walletAccountDao(),
+        budgetDao = database.budgetDao(),
         syncQueueDao = database.syncQueueDao(),
         authRepository = authRepository,
         supabaseClientProvider = SupabaseClientProvider(application),
@@ -739,6 +741,9 @@ class ViNoteViewModel(application: Application) : AndroidViewModel(application) 
                         email = session.email,
                         avatarInitials = session.name.split(" ").mapNotNull { it.firstOrNull()?.uppercase() }.take(2).joinToString("")
                     )
+                    if (session.isAuthenticated) {
+                        cloudSynchronizer.requestSync()
+                    }
                 }
             }
         }
@@ -1249,6 +1254,7 @@ class ViNoteViewModel(application: Application) : AndroidViewModel(application) 
             authRepository.getUserId()?.let { userId ->
                 persistDailyBudget(userId, dailyBudgetLimit, monthlyIncome)
                 persistProfileSettings(userId, _userProfile.value)
+                cloudSynchronizer.requestSync()
             }
         }
         showBanner("Profile & Budget settings updated! 💾")
@@ -1632,6 +1638,7 @@ class ViNoteViewModel(application: Application) : AndroidViewModel(application) 
                 showBanner("Payment recorded: ${FormatUtils.formatRupiah(tx.amount)} (${tx.category})")
                 delay(300)
                 evaluateBudgetStatus()
+                cloudSynchronizer.requestSync()
             }
         }
     }
@@ -1654,6 +1661,7 @@ class ViNoteViewModel(application: Application) : AndroidViewModel(application) 
             showBanner("Transaction added!")
             delay(300)
             evaluateBudgetStatus()
+            cloudSynchronizer.requestSync()
         }
     }
 
@@ -1716,6 +1724,7 @@ class ViNoteViewModel(application: Application) : AndroidViewModel(application) 
             )
             repository.insertGoal(newGoal)
             showBanner("Goal '${title}' created successfully! 🎉")
+            cloudSynchronizer.requestSync()
         }
     }
 
@@ -1725,6 +1734,7 @@ class ViNoteViewModel(application: Application) : AndroidViewModel(application) 
             repository.updateGoal(updated)
             notificationEngine.notifyGoalProgress(goal.title, updated.currentAmount, goal.targetAmount)
             showBanner("Saved ${FormatUtils.formatRupiah(amount)} to ${goal.title}!")
+            cloudSynchronizer.requestSync()
         }
     }
 
