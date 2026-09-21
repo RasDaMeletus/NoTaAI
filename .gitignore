@@ -24,5 +24,8 @@ my-upload-key.jks
 *.apk
 .hermes/
 graphify-out/
-ViNote
+# Root-level scratch dir named after the old project name; NOT a source path.
+# An unanchored "ViNote" here also matched com/vinote/** source files and
+# silently excluded half the app from git.
+/ViNote
 
