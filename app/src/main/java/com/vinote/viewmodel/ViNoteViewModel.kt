@@ -277,6 +277,52 @@ class ViNoteViewModel(application: Application) : AndroidViewModel(application) 
     private val _userProfile = MutableStateFlow(UserProfile())
     val userProfile = _userProfile.asStateFlow()
 
+    // Persist profile/budget settings that do not have dedicated Room columns.
+    // Keys are scoped by user so OAuth and guest profiles never overwrite each other.
+    private val profilePreferences = application.getSharedPreferences(
+        "nota_profile_settings",
+        Context.MODE_PRIVATE
+    )
+
+    private fun preferenceKey(userId: String, field: String) = "$userId:$field"
+
+    private fun restorePersistedProfile(userId: String, persistedBudget: BudgetEntity?): UserProfile {
+        val current = _userProfile.value
+        return current.copy(
+            monthlyIncome = persistedBudget?.monthlyLimit
+                ?: profilePreferences.getLong(preferenceKey(userId, "monthly_income"), current.monthlyIncome),
+            dailyBudgetLimit = persistedBudget?.dailyLimit
+                ?: profilePreferences.getLong(preferenceKey(userId, "daily_budget"), current.dailyBudgetLimit),
+            savingsTargetPercentage = profilePreferences.getInt(
+                preferenceKey(userId, "savings_percentage"), current.savingsTargetPercentage
+            ),
+            currencyCode = profilePreferences.getString(
+                preferenceKey(userId, "currency_code"), current.currencyCode
+            ) ?: current.currencyCode,
+            currencySymbol = profilePreferences.getString(
+                preferenceKey(userId, "currency_symbol"), current.currencySymbol
+            ) ?: current.currencySymbol,
+            financialPersona = profilePreferences.getString(
+                preferenceKey(userId, "financial_persona"), current.financialPersona
+            ) ?: current.financialPersona,
+            isBudgetAlertActive = profilePreferences.getBoolean(
+                preferenceKey(userId, "budget_alert_active"), current.isBudgetAlertActive
+            )
+        )
+    }
+
+    private fun persistProfileSettings(userId: String, profile: UserProfile) {
+        profilePreferences.edit()
+            .putLong(preferenceKey(userId, "monthly_income"), profile.monthlyIncome)
+            .putLong(preferenceKey(userId, "daily_budget"), profile.dailyBudgetLimit)
+            .putInt(preferenceKey(userId, "savings_percentage"), profile.savingsTargetPercentage)
+            .putString(preferenceKey(userId, "currency_code"), profile.currencyCode)
+            .putString(preferenceKey(userId, "currency_symbol"), profile.currencySymbol)
+            .putString(preferenceKey(userId, "financial_persona"), profile.financialPersona)
+            .putBoolean(preferenceKey(userId, "budget_alert_active"), profile.isBudgetAlertActive)
+            .apply()
+    }
+
     // Financial Health Score Flow (Deterministic 0-100 Offline Engine)
     val financialHealthScore: StateFlow<FinancialHealthScore> = combine(
         allTransactions,
@@ -618,6 +664,10 @@ class ViNoteViewModel(application: Application) : AndroidViewModel(application) 
                 updatedTimestamp = System.currentTimeMillis()
             )
         )
+        profilePreferences.edit()
+            .putLong(preferenceKey(userId, "daily_budget"), dailyLimit)
+            .putLong(preferenceKey(userId, "monthly_income"), monthlyLimit.coerceAtLeast(0L))
+            .apply()
     }
 
     init {
@@ -676,13 +726,12 @@ class ViNoteViewModel(application: Application) : AndroidViewModel(application) 
             authRepository.currentSession.collect { session ->
                 if (session != null) {
                     WalletNotificationListenerService.activeUserId = session.userId
+                    transactionService.setUserId(session.userId)
                     val persistedBudget = database.budgetDao().getBudget(session.userId)
-                    _userProfile.value = _userProfile.value.copy(
+                    _userProfile.value = restorePersistedProfile(session.userId, persistedBudget).copy(
                         fullName = session.name,
                         email = session.email,
-                        avatarInitials = session.name.split(" ").mapNotNull { it.firstOrNull()?.uppercase() }.take(2).joinToString(""),
-                        dailyBudgetLimit = persistedBudget?.dailyLimit
-                            ?: _userProfile.value.dailyBudgetLimit
+                        avatarInitials = session.name.split(" ").mapNotNull { it.firstOrNull()?.uppercase() }.take(2).joinToString("")
                     )
                 }
             }
@@ -1139,6 +1188,7 @@ class ViNoteViewModel(application: Application) : AndroidViewModel(application) 
             }
             authRepository.getUserId()?.let { userId ->
                 persistDailyBudget(userId, dailyBudgetLimit, monthlyIncome)
+                persistProfileSettings(userId, _userProfile.value)
             }
         }
         _notaConfig.value = _notaConfig.value.copy(baseColor = startingColor, eyeState = NotaEyeState.HAPPY)
@@ -1192,6 +1242,7 @@ class ViNoteViewModel(application: Application) : AndroidViewModel(application) 
             }
             authRepository.getUserId()?.let { userId ->
                 persistDailyBudget(userId, dailyBudgetLimit, monthlyIncome)
+                persistProfileSettings(userId, _userProfile.value)
             }
         }
         showBanner("Profile & Budget settings updated! 💾")
@@ -1803,6 +1854,35 @@ class ViNoteViewModel(application: Application) : AndroidViewModel(application) 
         }
     }
 
+    private fun looksLikeTransactionCommand(text: String): Boolean {
+        val lower = text.lowercase()
+        val hasAction = listOf(
+            "catat", "tambahkan", "tambah transaksi", "beli", "bayar", "habis",
+            "pengeluaran", "pemasukan", "gaji", "terima uang", "spent", "paid", "income"
+        ).any(lower::contains)
+        val hasAmount = Regex("""\d|\b(?:seribu|sepuluh ribu|dua puluh ribu|dua puluh lima ribu|tiga puluh lima ribu|lima puluh ribu|seratus ribu|dua ratus ribu|sejuta)\b""")
+            .containsMatchIn(lower)
+        return hasAction && hasAmount
+    }
+
+    private fun prepareChatTransactionDraft(userText: String): TransactionItem? {
+        if (!looksLikeTransactionCommand(userText)) return null
+        val parsed = OfflineNlpEngine.parseSpokenTransaction(userText)
+        if (parsed.amount <= 0L) return null
+        return TransactionItem(
+            userId = activeUserIdOrGuest,
+            title = parsed.title,
+            amount = parsed.amount,
+            category = parsed.category,
+            type = parsed.type,
+            merchant = parsed.merchant.ifBlank { parsed.title },
+            walletName = parsed.walletName,
+            source = TransactionSource.MANUAL,
+            timestamp = System.currentTimeMillis(),
+            timeLabel = "Just now"
+        )
+    }
+
     // Grounded Chat conversation with Controlled Tools
     fun sendChatMessage(userText: String) {
         if (userText.isBlank()) return
@@ -1812,6 +1892,20 @@ class ViNoteViewModel(application: Application) : AndroidViewModel(application) 
 
         viewModelScope.launch {
             _isNotaTyping.value = true
+
+            // Parse transaction commands locally first, so recording does not
+            // depend on the cloud model returning a structured action.
+            prepareChatTransactionDraft(userText)?.let { draft ->
+                _pendingTransaction.value = draft
+                _chatMessages.value = _chatMessages.value + ChatMessage(
+                    text = "Saya sudah menyiapkan transaksi ${draft.title} sebesar ${FormatUtils.formatRupiah(draft.amount)}. Periksa detailnya lalu konfirmasi untuk menyimpan.",
+                    isUser = false,
+                    quickChips = emptyList(),
+                    eyeState = NotaEyeState.EXCITED
+                )
+                _isNotaTyping.value = false
+                return@launch
+            }
 
             // Gather grounded deterministic facts via Controlled Tools
             val balance = financeTools.getCurrentBalance(activeUserIdOrGuest)
