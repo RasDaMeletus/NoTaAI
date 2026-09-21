@@ -32,12 +32,17 @@ class TransactionService(
     fun setUserId(id: String) { userId = id }
 
     val allTransactions: Flow<List<TransactionItem>> = transactionDao.getAllTransactions()
-        .map { transactions ->
-            val now = System.currentTimeMillis()
-            transactions.map { transaction ->
-                transaction.copy(timeLabel = formatRelativeTime(transaction.timestamp, now))
-            }
+        .map(::withRelativeTimes)
+
+    fun transactionsForUser(userId: String): Flow<List<TransactionItem>> =
+        transactionDao.getTransactionsForUser(userId).map(::withRelativeTimes)
+
+    private fun withRelativeTimes(transactions: List<TransactionItem>): List<TransactionItem> {
+        val now = System.currentTimeMillis()
+        return transactions.map { transaction ->
+            transaction.copy(timeLabel = formatRelativeTime(transaction.timestamp, now))
         }
+    }
 
     private fun formatRelativeTime(timestamp: Long, now: Long): String {
         if (timestamp <= 0L) return "Unknown time"
