@@ -45,21 +45,31 @@ android {
       val ks = file("${rootDir}/debug.keystore")
       if (!ks.exists()) {
         ks.parentFile.mkdirs()
-        val kt = System.getProperty("java.home") + "/bin/keytool"
+        val kt = (System.getProperty("java.home") ?: System.getenv("JAVA_HOME"))
+          ?.let { File(it, if (System.getProperty("os.name").contains("Windows")) "/bin/keytool.exe" else "/bin/keytool") }
+          ?: File("keytool")
         val cmd = listOf(
-          kt, "-genkeypair", "-v", "-keystore", ks.absolutePath,
+          kt.absolutePath, "-genkeypair", "-v", "-keystore", ks.absolutePath,
           "-storepass", "android", "-keypass", "android",
           "-alias", "androiddebugkey", "-keyalg", "RSA", "-keysize", "2048",
           "-validity", "10000", "-dname", "CN=Android Debug,O=Android,C=US"
         )
-        val pb = ProcessBuilder(cmd)
-        pb.redirectErrorStream(true)
-        val proc = pb.start()
-        val out = proc.inputStream.bufferedReader().readText()
-        if (proc.waitFor() != 0) {
-          throw GradleException("Failed to generate debug.keystore:\n$out")
+        // Must run at task-execution time, not configuration time: Gradle
+        // rejects ProcessBuilder during configuration.
+        project.tasks.matching { it.name.startsWith("validateSigningDebug") }.configureEach {
+          doFirst {
+            if (!ks.exists()) {
+              val pb = ProcessBuilder(cmd)
+              pb.redirectErrorStream(true)
+              val proc = pb.start()
+              val out = proc.inputStream.bufferedReader().readText()
+              if (proc.waitFor() != 0) {
+                throw GradleException("Failed to generate debug.keystore:\n$out")
+              }
+              logger.lifecycle("Generated debug.keystore for CI signing")
+            }
+          }
         }
-        logger.lifecycle("Generated debug.keystore for CI signing")
       }
       storeFile = ks
       storePassword = "android"
