@@ -95,6 +95,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
@@ -217,34 +218,38 @@ class ViNoteViewModel(application: Application) : AndroidViewModel(application) 
 
     private val activeUserIdOrGuest: String get() = activeUserId ?: guestUserId
 
-    // Transactions Flow
-    val allTransactions: StateFlow<List<TransactionItem>> = transactionService.allTransactions
+    // Every user-scoped Flow must switch when OAuth restores a different
+    // identity. Capturing activeUserIdOrGuest during construction permanently
+    // subscribed the UI to "guest", which made cloud-backed data look missing.
+    private val activeUserIdFlow = authRepository.currentSession
+        .map { it?.userId ?: guestUserId }
+
+    val allTransactions: StateFlow<List<TransactionItem>> = activeUserIdFlow
+        .flatMapLatest(transactionService::transactionsForUser)
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
-    // Pending Transactions (Medium Confidence Detections requiring approval)
-    val pendingReviewTransactions: StateFlow<List<TransactionItem>> = repository.getPendingTransactionsFlow(activeUserIdOrGuest)
+    val pendingReviewTransactions: StateFlow<List<TransactionItem>> = activeUserIdFlow
+        .flatMapLatest(repository::getPendingTransactionsFlow)
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
-    // Detection Events Log Flow
-    val detectionEvents: StateFlow<List<DetectionEventEntity>> = repository.getDetectionEventsFlow(activeUserIdOrGuest)
+    val detectionEvents: StateFlow<List<DetectionEventEntity>> = activeUserIdFlow
+        .flatMapLatest(repository::getDetectionEventsFlow)
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
-    // Wallet Accounts from Room
-    val walletAccounts: StateFlow<List<WalletAccountEntity>> = repository.getWalletsFlow(activeUserIdOrGuest)
+    val walletAccounts: StateFlow<List<WalletAccountEntity>> = activeUserIdFlow
+        .flatMapLatest(repository::getWalletsFlow)
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
-    // Goals Flow
-    val allGoals: StateFlow<List<GoalItem>> = repository.allGoals
+    val allGoals: StateFlow<List<GoalItem>> = activeUserIdFlow
+        .flatMapLatest(repository::getGoalsFlow)
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
-    // Transaction Templates Flow (Quick 1-tap presets)
-    val transactionTemplates: StateFlow<List<TransactionTemplateEntity>> = transactionTemplateDao
-        .getTemplatesForUser(activeUserIdOrGuest)
+    val transactionTemplates: StateFlow<List<TransactionTemplateEntity>> = activeUserIdFlow
+        .flatMapLatest(transactionTemplateDao::getTemplatesForUser)
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
-    // Recurring Scheduled Transactions Flow
-    val recurringTransactions: StateFlow<List<RecurringTransactionEntity>> = recurringTransactionDao
-        .getRecurringForUser(activeUserIdOrGuest)
+    val recurringTransactions: StateFlow<List<RecurringTransactionEntity>> = activeUserIdFlow
+        .flatMapLatest(recurringTransactionDao::getRecurringForUser)
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     // Search and Filter for Activity screen
