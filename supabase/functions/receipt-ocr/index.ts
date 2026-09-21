@@ -1,9 +1,6 @@
 
 import { serve } from 'https://deno.land/std@0.177.0/http/server.ts'
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.4.1'
-
-// Load environment variables from .env file
-import 'https://deno.land/x/dotenv@v3.2.0/load.ts'
+import { requireAuth } from '../_shared/identity.ts'
 
 const RESEMBLE_AI_API_KEY = Deno.env.get('RESEMBLE_AI_API_KEY')
 const RESEMBLE_AI_PROJECT_ID = Deno.env.get('RESEMBLE_AI_PROJECT_ID')
@@ -13,23 +10,17 @@ const RESEMBLE_AI_PROJECT_ID = Deno.env.get('RESEMBLE_AI_PROJECT_ID')
 const OPENROUTER_API_KEY = Deno.env.get('OPENROUTER_API_KEY')
 const OPENROUTER_MODEL = 'inclusionai/ling-3.0-flash-vl:free'
 
+const corsHeaders = {
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+}
+
 serve(async (req) => {
     try {
-        // Create a Supabase client with the Auth context of the user making the request
-        const supabaseClient = createClient(
-            Deno.env.get('SUPABASE_URL') ?? '',
-            Deno.env.get('SUPABASE_ANON_KEY') ?? '',
-            {
-                global: {
-                    headers: { Authorization: req.headers.get('Authorization')! },
-                },
-            }
-        )
-        const { data: { user } } = await supabaseClient.auth.getUser()
-
-        if (!user) {
+        const callerId = await requireAuth(req)
+        if (callerId == null) {
             return new Response(
-                JSON.stringify({ error: 'Unauthorized: No user session found.' }),
+                JSON.stringify({ error: 'Unauthorized: valid access token required' }),
                 { headers: { 'Content-Type': 'application/json' }, status: 401 }
             )
         }

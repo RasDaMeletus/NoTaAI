@@ -1,5 +1,5 @@
 import { serve } from "https://deno.land/std@0.177.0/http/server.ts"
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2"
+import { requireAuth } from "../_shared/identity.ts"
 import { decode } from "https://deno.land/std@0.177.0/encoding/base64.ts"
 
 const corsHeaders = {
@@ -18,21 +18,11 @@ serve(async (req) => {
       throw new Error("Missing audioBase64 in request body.")
     }
 
-    // Create a Supabase client using the ANON_KEY passed in the Authorization header
-    const supabaseUrl = Deno.env.get('SUPABASE_URL')
-    const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') // Or handle auth properly
-    
-    const authHeader = req.headers.get('Authorization')!
-    const supabaseAnonKey = req.headers.get('apikey')!
-
-    const supabase = createClient(supabaseUrl, supabaseAnonKey, {
-      global: { headers: { Authorization: authHeader } },
-    })
-
-    // Validate the user is authenticated
-    const { data: { user }, error: authError } = await supabase.auth.getUser()
-    if (authError || !user) {
-      return new Response(JSON.stringify({ error: "Unauthorized" }), {
+    // Verify the caller's access token. The publishable key alone is not an
+    // identity: it ships inside the APK.
+    const callerId = await requireAuth(req)
+    if (callerId == null) {
+      return new Response(JSON.stringify({ error: "Unauthorized: valid access token required" }), {
         status: 401,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' }
       })
