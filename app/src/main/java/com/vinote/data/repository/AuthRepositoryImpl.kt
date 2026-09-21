@@ -98,7 +98,7 @@ class AuthRepositoryImpl @Inject constructor(
     }
 
     private fun applyAuthenticatedSession(session: SupabaseSession): String {
-        val user = session.user
+        val user = session.user ?: error("Authenticated session has no user")
         _supabaseSessionFlow.value = session
         _userId.value = user.id
         _currentSession.value = UserSession(
