@@ -51,6 +51,10 @@ class NoTaRepository(
         return walletAccountDao.getWalletsForUserFlow(userId)
     }
 
+    fun getGoalsFlow(userId: String): Flow<List<GoalItem>> {
+        return goalDao.getGoalsForUser(userId)
+    }
+
     fun getDetectionEventsFlow(userId: String): Flow<List<DetectionEventEntity>> {
         return detectionEventDao.getAllDetectionEventsFlow(userId)
     }
