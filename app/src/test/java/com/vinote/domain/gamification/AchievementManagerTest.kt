@@ -72,6 +72,10 @@ class AchievementManagerTest {
         val fakeDao = FakeAchievementDao()
         val manager = AchievementManager(fakeDao)
 
+        // Achievements must be seeded before evaluate() can act on them:
+        // updateProgress() no-ops when the row is absent.
+        manager.seedDefaultsIfNeeded()
+
         val goals = listOf(
             GoalItem(id = 1L, title = "Beli Laptop", targetAmount = 5000000L, currentAmount = 5000000L)
         )

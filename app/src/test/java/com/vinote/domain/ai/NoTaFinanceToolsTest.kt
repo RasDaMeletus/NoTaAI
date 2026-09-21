@@ -67,6 +67,9 @@ class FakeWalletAccountDao : WalletAccountDao {
     override suspend fun setAutoDetectEnabled(id: String, userId: String, isEnabled: Boolean) {}
     override suspend fun deleteWallet(id: String, userId: String) {}
     override suspend fun clearUserWallets(userId: String) {}
+    override suspend fun getAllWalletsWithGateway(): List<WalletAccountEntity> = emptyList()
+    override fun getAllWalletsWithGatewayFlow(): Flow<List<WalletAccountEntity>> = flowOf(emptyList())
+    override suspend fun updateBalance(id: String, balance: Double) {}
 }
 
 class FakeBudgetDao : BudgetDao {

@@ -4,7 +4,6 @@ import com.vinote.data.local.TransactionDao
 import com.vinote.data.model.TransactionItem
 import com.vinote.data.model.TransactionSource
 import com.vinote.data.model.TransactionType
-import com.vinote.data.repository.FirestoreExpenseSyncRepository
 import com.vinote.domain.transaction.TransactionService
 import com.vinote.domain.transaction.TransactionValidationResult
 import kotlinx.coroutines.test.runTest
@@ -25,7 +24,7 @@ class TransactionServiceTest {
     @Before
     fun setup() {
         mockTransactionDao = MockTransactionDao()
-        transactionService = TransactionService(mockTransactionDao, FirestoreExpenseSyncRepository())
+        transactionService = TransactionService(mockTransactionDao)
     }
 
     @Test
