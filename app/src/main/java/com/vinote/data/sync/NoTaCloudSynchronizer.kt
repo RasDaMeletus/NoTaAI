@@ -16,6 +16,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
 import java.text.SimpleDateFormat
@@ -101,7 +102,7 @@ class NoTaCloudSynchronizer(
                 put("is_confirmed", transaction.isConfirmed)
                 put("sync_state", "SYNCED")
             }
-            clientTable("transactions").insert(
+            clientTable("transactions").insert<JsonObject>(
                 payload,
                 upsert = true,
                 onConflict = "fingerprint"
@@ -136,7 +137,7 @@ class NoTaCloudSynchronizer(
                 put("linked_account_id", wallet.linkedAccountId)
                 // Never upload gatewayAccessToken.
             }
-            clientTable("wallet_accounts").insert(payload, upsert = true, onConflict = "id")
+            clientTable("wallet_accounts").insert<JsonObject>(payload, upsert = true, onConflict = "id")
         }
         return wallets.size
     }
@@ -152,7 +153,7 @@ class NoTaCloudSynchronizer(
             put("period_month_year", budget.periodMonthYear)
             put("updated_at", isoTimestamp(budget.updatedTimestamp))
         }
-        clientTable("budgets").insert(payload, upsert = true, onConflict = "id")
+        clientTable("budgets").insert<JsonObject>(payload, upsert = true, onConflict = "id")
         return 1
     }
 
@@ -169,7 +170,7 @@ class NoTaCloudSynchronizer(
                 put("is_deleted", false)
                 put("updated_at", isoTimestamp(System.currentTimeMillis()))
             }
-            clientTable("savings_cloud").insert(
+            clientTable("savings_cloud").insert<JsonObject>(
                 payload,
                 upsert = true,
                 onConflict = "user_id,local_id"
