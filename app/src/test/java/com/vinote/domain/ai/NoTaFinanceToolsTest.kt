@@ -37,6 +37,8 @@ class FakeTransactionDao(val txs: MutableList<TransactionItem> = mutableListOf()
     override suspend fun deleteByFingerprint(fingerprint: String) {}
     override suspend fun clearUserTransactions(userId: String) {}
     override suspend fun clearAll() {}
+    override suspend fun setRemoteId(id: Long, remoteId: String) {}
+    override suspend fun getRemoteId(id: Long): String? = null
 }
 
 class FakeGoalDao : GoalDao {

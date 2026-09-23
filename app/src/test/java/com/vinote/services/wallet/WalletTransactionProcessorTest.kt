@@ -142,5 +142,12 @@ class WalletTransactionProcessorTest {
         override suspend fun clearAll() {
             transactions.clear()
         }
+
+        // ---- remote-id mapping (TransactionDao) ----
+        private val remoteIds = mutableMapOf<Long, String>()
+        override suspend fun setRemoteId(id: Long, remoteId: String) {
+            remoteIds[id] = remoteId
+        }
+        override suspend fun getRemoteId(id: Long): String? = remoteIds[id]
     }
 }
