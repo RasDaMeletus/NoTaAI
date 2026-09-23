@@ -117,6 +117,7 @@ class ViNoteViewModel(application: Application) : AndroidViewModel(application) 
         goalDao = database.goalDao(),
         syncQueueDao = database.syncQueueDao(),
         authRepository = authRepository,
+        supabaseClientProvider = SupabaseClientProvider(application),
         scope = viewModelScope
     )
 

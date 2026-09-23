@@ -34,7 +34,7 @@ import com.vinote.data.model.TransactionItem
         SpendingPredictionEntity::class,
         TransactionCategoryEntity::class
     ],
-    version = 5, // bumped from 4
+    version = 6, // bumped from 5: added transactions.remoteId (cloud uuid)
     exportSchema = false
 )
 abstract class NoTaDatabase : RoomDatabase() {

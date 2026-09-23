@@ -59,6 +59,17 @@ interface TransactionDao {
     @Query("DELETE FROM transactions WHERE id = :id")
     suspend fun deleteById(id: Long)
 
+    // ---- remote-id mapping ----
+    // The cloud transactions PK is a generated uuid; the local PK is an
+    // autoincrement Long. Sync keeps the uuid here so UPDATE/DELETE pushes
+    // can target the right remote row.
+
+    @Query("UPDATE transactions SET remoteId = :remoteId WHERE id = :id")
+    suspend fun setRemoteId(id: Long, remoteId: String)
+
+    @Query("SELECT remoteId FROM transactions WHERE id = :id")
+    suspend fun getRemoteId(id: Long): String?
+
     @Query("DELETE FROM transactions WHERE fingerprint = :fingerprint")
     suspend fun deleteByFingerprint(fingerprint: String)
 

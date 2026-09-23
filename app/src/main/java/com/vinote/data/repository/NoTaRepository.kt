@@ -68,14 +68,15 @@ class NoTaRepository(
             updateWalletBalanceForTransaction(walletName, transaction.userId, transaction.amount, transaction.type)
         }
 
-        // Queue for synchronization
+        // Queue for synchronization. Column names/types must match the
+        // public.transactions table exactly or PostgREST rejects the push.
         syncQueueDao.enqueue(
             SyncQueueEntity(
                 userId = transaction.userId,
                 entityType = "TRANSACTION",
                 entityId = insertedId.toString(),
                 operation = SyncOperation.INSERT,
-                payloadJson = """{"id":$insertedId,"title":"${transaction.title}","amount":${transaction.amount}}"""
+                payloadJson = transaction.toSupabaseJson()
             )
         )
         return insertedId
@@ -112,7 +113,7 @@ class NoTaRepository(
                 entityType = "TRANSACTION",
                 entityId = transaction.id.toString(),
                 operation = SyncOperation.UPDATE,
-                payloadJson = """{"id":${transaction.id},"title":"${transaction.title}","amount":${transaction.amount}}"""
+                payloadJson = transaction.toSupabaseJson()
             )
         )
 
@@ -159,11 +160,14 @@ class NoTaRepository(
     suspend fun deleteTransaction(id: Long, userId: String = "") {
         // Get transaction before deleting to update wallet balance
         val transaction = transactionDao.getTransactionById(id)
-        
+
         transactionDao.deleteById(id)
+        // The sync push filters remote rows by user_id, so this must be the
+        // transaction's real owner, not the caller's convenience default.
+        val owner = transaction?.userId?.ifBlank { userId } ?: userId
         syncQueueDao.enqueue(
             SyncQueueEntity(
-                userId = userId,
+                userId = owner,
                 entityType = "TRANSACTION",
                 entityId = id.toString(),
                 operation = SyncOperation.DELETE,

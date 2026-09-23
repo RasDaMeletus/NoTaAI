@@ -165,6 +165,10 @@ class AuthRepositoryImpl @Inject constructor(
         return try {
             val client = supabaseClientProvider?.clientOrNull
                 ?: return Result.failure(IllegalStateException("Supabase is not configured"))
+            // Android: the SDK builds the OAuth url from the Auth plugin's
+            // scheme/host (nota://auth, set in SupabaseClientProvider) and
+            // MainActivity.onNewIntent feeds the callback back in. No explicit
+            // redirect is passed here — overriding it breaks the deep link.
             client.auth.signInWith(io.github.jan.supabase.gotrue.providers.Google)
             Result.success(Unit)
         } catch (t: Throwable) {
